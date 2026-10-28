@@ -564,7 +564,9 @@ export class ChartWidget<HorzScaleItem> implements IDestroyable, IChartWidgetBas
 				// not laid out; keeps its last size so showing it again repaints at once
 				calculatePaneHeight = paneWidget.getSize().height;
 			} else if (paneIndex === lastVisiblePaneIndex) {
-				calculatePaneHeight = Math.ceil((totalPaneHeight - accumulatedHeight) * pixelRatio) / pixelRatio;
+				// the exact remainder: rounding it up overshot the chart by up to a device pixel at fractional
+				// pixel ratios, moving the time axis whenever the visible pane count changed
+				calculatePaneHeight = totalPaneHeight - accumulatedHeight;
 			} else {
 				calculatePaneHeight = Math.round(paneWidget.stretchFactor() * stretchPixels * pixelRatio) / pixelRatio;
 			}

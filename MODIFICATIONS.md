@@ -19,3 +19,14 @@ Changed files:
 
 Tests: `tests/e2e/interactions/test-cases/api/pane-visibility.js`,
 `tests/e2e/graphics/test-cases/panes/hidden-pane.js`, `tests/e2e/coverage/test-cases/panes/pane-api.js`.
+
+## Last pane takes the exact remaining height (2026, Cujuju)
+
+The last visible pane's height was rounded up to a whole device pixel, so at fractional pixel ratios
+(125%, 150%) the panes overshot the chart by up to a device pixel and the time axis moved whenever the
+number of visible panes changed. It now takes the exact remainder, so panes, separators and the time
+axis always sum to the chart height.
+
+Changed files:
+
+- `src/gui/chart-widget.ts` — `_adjustSizeImpl`
