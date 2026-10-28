@@ -1,3 +1,4 @@
+// Modified by Cujuju (2026): adds pane visibility (IPaneApi.setVisible). See MODIFICATIONS.md.
 import { IChartWidgetBase } from '../gui/chart-widget';
 
 import { assert } from '../helpers/assertions';
@@ -35,7 +36,7 @@ export class PaneApi<HorzScaleItem> implements IPaneApi<HorzScaleItem> {
 	}
 
 	public getHeight(): number {
-		return this._pane.height();
+		return this._pane.visible() ? this._pane.height() : 0;
 	}
 
 	public setHeight(height: number): void {
@@ -109,6 +110,18 @@ export class PaneApi<HorzScaleItem> implements IPaneApi<HorzScaleItem> {
 
 	public preserveEmptyPane(): boolean {
 		return this._pane.preserveEmptyPane();
+	}
+
+	public setVisible(visible: boolean): void {
+		if (this._pane.visible() === visible) {
+			return;
+		}
+		this._pane.setVisible(visible);
+		this._chartWidget.model().fullUpdate();
+	}
+
+	public visible(): boolean {
+		return this._pane.visible();
 	}
 
 	public addCustomSeries<

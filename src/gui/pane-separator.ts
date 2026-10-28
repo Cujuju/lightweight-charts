@@ -1,3 +1,4 @@
+// Modified by Cujuju (2026): adds pane visibility (IPaneApi.setVisible). See MODIFICATIONS.md.
 import { Size, size } from 'fancy-canvas';
 
 import { IDestroyable } from '../helpers/idestroyable';
@@ -13,6 +14,7 @@ export const enum SeparatorConstants {
 }
 
 interface ResizeInfo {
+	topPane: PaneWidget;
 	startY: number;
 	totalStretch: number;
 	prevStretchTopPane: number;
@@ -31,7 +33,9 @@ export class PaneSeparator implements IDestroyable {
 	private readonly _rowElement: HTMLTableRowElement;
 	private readonly _cell: HTMLTableCellElement;
 	private readonly _topPane: PaneWidget;
+	private readonly _topPaneIndex: number;
 	private readonly _bottomPane: PaneWidget;
+	private _visible: boolean = true;
 
 	private _handle: Handle | null = null;
 	private _mouseEventHandler: MouseEventHandler | null = null;
@@ -41,6 +45,7 @@ export class PaneSeparator implements IDestroyable {
 	public constructor(chartWidget: IChartWidgetBase, topPaneIndex: number, bottomPaneIndex: number) {
 		this._chartWidget = chartWidget;
 		this._topPane = chartWidget.paneWidgets()[topPaneIndex];
+		this._topPaneIndex = topPaneIndex;
 		this._bottomPane = chartWidget.paneWidgets()[bottomPaneIndex];
 
 		this._rowElement = document.createElement('tr');
@@ -72,6 +77,15 @@ export class PaneSeparator implements IDestroyable {
 
 	public getElement(): HTMLElement {
 		return this._rowElement;
+	}
+
+	public setVisible(visible: boolean): void {
+		this._visible = visible;
+		this._rowElement.style.display = visible ? '' : 'none';
+	}
+
+	public visible(): boolean {
+		return this._visible;
 	}
 
 	public getSize(): Size {
@@ -158,6 +172,16 @@ export class PaneSeparator implements IDestroyable {
 
 		this._handle = { element, backgroundElement };
 	}
+	private _nearestVisiblePaneAbove(): PaneWidget | null {
+		const paneWidgets = this._chartWidget.paneWidgets();
+		for (let paneIndex = this._topPaneIndex; paneIndex >= 0; paneIndex--) {
+			if (paneWidgets[paneIndex].state().visible()) {
+				return paneWidgets[paneIndex];
+			}
+		}
+		return null;
+	}
+
 	private _updateBorderColor(): void {
 		this._cell.style.background = this._chartWidget.options()['layout'].panes.separatorColor;
 	}
@@ -178,8 +202,13 @@ export class PaneSeparator implements IDestroyable {
 			return;
 		}
 
-		const totalStretch = this._topPane.state().stretchFactor() + this._bottomPane.state().stretchFactor();
-		const totalHeight = this._topPane.getSize().height + this._bottomPane.getSize().height;
+		// hidden panes between this separator and the pane it resizes take no height
+		const topPane = this._nearestVisiblePaneAbove();
+		if (topPane === null) {
+			return;
+		}
+		const totalStretch = topPane.state().stretchFactor() + this._bottomPane.state().stretchFactor();
+		const totalHeight = topPane.getSize().height + this._bottomPane.getSize().height;
 		const pixelStretchFactor = totalStretch / totalHeight;
 		const minPaneStretch = SeparatorConstants.MinPaneHeight * pixelStretchFactor;
 
@@ -190,8 +219,9 @@ export class PaneSeparator implements IDestroyable {
 		}
 
 		this._resizeInfo = {
+			topPane,
 			startY: event.pageY,
-			prevStretchTopPane: this._topPane.state().stretchFactor(),
+			prevStretchTopPane: topPane.state().stretchFactor(),
 			maxPaneStretch: totalStretch - minPaneStretch,
 			totalStretch,
 			pixelStretchFactor,
@@ -216,7 +246,7 @@ export class PaneSeparator implements IDestroyable {
 			resizeInfo.maxPaneStretch
 		);
 
-		this._topPane.state().setStretchFactor(upperPaneNewStretch);
+		resizeInfo.topPane.state().setStretchFactor(upperPaneNewStretch);
 		this._bottomPane.state().setStretchFactor(resizeInfo.totalStretch - upperPaneNewStretch);
 
 		this._chartWidget.model().fullUpdate();

@@ -1,3 +1,4 @@
+// Modified by Cujuju (2026): adds pane visibility (IPaneApi.setVisible). See MODIFICATIONS.md.
 import { assert, ensureDefined, ensureNotNull } from '../helpers/assertions';
 import { Delegate } from '../helpers/delegate';
 import { IDestroyable } from '../helpers/idestroyable';
@@ -49,6 +50,7 @@ export class Pane implements IDestroyable, IPrimitiveHitTestSource {
 		result: readonly IPriceDataSource[];
 	} | null = null;
 	private _preserveEmptyPane: boolean = false;
+	private _visible: boolean = true;
 
 	private _destroyed: Delegate = new Delegate();
 
@@ -186,6 +188,14 @@ export class Pane implements IDestroyable, IPrimitiveHitTestSource {
 
 	public preserveEmptyPane(): boolean {
 		return this._preserveEmptyPane;
+	}
+
+	public setVisible(visible: boolean): void {
+		this._visible = visible;
+	}
+
+	public visible(): boolean {
+		return this._visible;
 	}
 
 	public series(): readonly Series<SeriesType>[] {
