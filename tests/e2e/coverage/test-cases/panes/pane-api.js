@@ -39,8 +39,15 @@ function afterInteractions() {
 			panes[0].moveTo(2);
 			panes[0].getHTMLElement();
 			panes[1].getSeries();
+			panes[1].setVisible(false);
+			panes[1].visible();
+			panes[1].getHeight();
+			chart.takeScreenshot();
 
-			requestAnimationFrame(resolve);
+			requestAnimationFrame(() => {
+				panes[1].setVisible(true);
+				requestAnimationFrame(resolve);
+			});
 		});
 	});
 }
