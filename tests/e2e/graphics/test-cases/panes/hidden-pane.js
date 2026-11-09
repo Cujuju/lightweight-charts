@@ -22,19 +22,19 @@ function generateData(startValue) {
 	return res;
 }
 
+window.ignoreMouseMove = true;
+window.checkChartScreenshot = true;
+
 function runTestCase(container) {
 	const chart = window.chart = LightweightCharts.createChart(container, { layout: { attributionLogo: false } });
 
-	const mainSeries = chart.addSeries(LightweightCharts.BarSeries);
-	const secondSeries = chart.addSeries(LightweightCharts.BarSeries, {}, 1);
-	const thirdSeries = chart.addSeries(LightweightCharts.BarSeries, {}, 2);
-
 	const startValue = Math.floor(container.getBoundingClientRect().height / 100) * 100;
+	for (let paneIndex = 0; paneIndex < 4; ++paneIndex) {
+		chart.addSeries(LightweightCharts.BarSeries, {}, paneIndex).setData(generateData(startValue + 20 * paneIndex));
+	}
 
-	mainSeries.setData(generateData(startValue));
-	secondSeries.setData(generateData(startValue + 20));
-	thirdSeries.setData(generateData(startValue + 40));
+	chart.panes()[0].setVisible(false);
+	chart.panes()[2].setVisible(false);
 
-	// the middle pane is hidden: two panes and one separator fill the chart
-	chart.panes()[1].setVisible(false);
+	chart.resize(600, 240, true);
 }

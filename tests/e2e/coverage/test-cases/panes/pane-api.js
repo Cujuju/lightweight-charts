@@ -41,7 +41,6 @@ function afterInteractions() {
 			panes[1].getSeries();
 			panes[1].setVisible(false);
 			panes[1].visible();
-			panes[1].getHeight();
 			chart.takeScreenshot();
 
 			requestAnimationFrame(() => {

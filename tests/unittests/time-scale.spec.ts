@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-floating-promises */
 import { expect } from 'chai';
-import { describe, it } from 'node:test';
+import { describe, it, mock } from 'node:test';
 
 import { timeScaleOptionsDefaults } from '../../src/api/options/time-scale-options-defaults';
 import { ChartModel } from '../../src/model/chart-model';
@@ -8,8 +8,9 @@ import { Coordinate } from '../../src/model/coordinate';
 import { HorzScaleBehaviorTime } from '../../src/model/horz-scale-behavior-time/horz-scale-behavior-time';
 import { Time, UTCTimestamp } from '../../src/model/horz-scale-behavior-time/types';
 import { InternalHorzScaleItem } from '../../src/model/ihorz-scale-behavior';
+import { ITimeScaleAnimation } from '../../src/model/invalidate-mask';
 import { LocalizationOptions } from '../../src/model/localization-options';
-import { TickMarkWeightValue, TimePointIndex, TimeScalePoint } from '../../src/model/time-data';
+import { Logical, TickMarkWeightValue, TimePointIndex, TimeScalePoint } from '../../src/model/time-data';
 import { TimeScale } from '../../src/model/time-scale';
 
 function chartModelMock(): ChartModel<Time> {
@@ -68,6 +69,44 @@ describe('TimeScale', () => {
 		}
 	});
 
+	it('setLogicalRange should apply the requested range even if there are less visible bars than the minimal visible bars count', () => {
+		const ts = new TimeScale<Time>(
+			chartModelMock(),
+			{ ...timeScaleOptionsDefaults, minBarSpacing: 0, maxBarSpacing: 100000 },
+			fakeLocalizationOptions,
+			behavior
+		);
+		ts.setWidth(400);
+		ts.update(...tsUpdate(1));
+		ts.setBaseIndex(1 as TimePointIndex);
+
+		ts.setLogicalRange({ from: 0.49 as Logical, to: 0.51 as Logical });
+
+		const logicalRange = ts.visibleLogicalRange();
+		expect(logicalRange).to.be.not.equal(null);
+		expect(logicalRange?.left()).to.be.closeTo(0.49, 1e-6);
+		expect(logicalRange?.right()).to.be.closeTo(0.51, 1e-6);
+	});
+
+	it('fitContent should still work with a large maxBarSpacing and a few bars', () => {
+		const ts = new TimeScale<Time>(
+			chartModelMock(),
+			{ ...timeScaleOptionsDefaults, minBarSpacing: 0, maxBarSpacing: 100000 },
+			fakeLocalizationOptions,
+			behavior
+		);
+		ts.setWidth(400);
+		ts.update(...tsUpdate(1));
+		ts.setBaseIndex(1 as TimePointIndex);
+
+		ts.fitContent();
+
+		const logicalRange = ts.visibleLogicalRange();
+		expect(logicalRange).to.be.not.equal(null);
+		expect(logicalRange?.left()).to.be.equal(0);
+		expect(logicalRange?.right()).to.be.equal(1);
+	});
+
 	describe('timeToIndex', () => {
 		it('should return index for time on scale', () => {
 			const ts = new TimeScale<Time>(chartModelMock(), timeScaleOptionsDefaults, fakeLocalizationOptions, behavior);
@@ -124,6 +163,53 @@ describe('TimeScale', () => {
 			ts.update(...tsUpdate(1));
 
 			expect(ts.timeToIndex({ timestamp: 0.5 as UTCTimestamp } as unknown as InternalHorzScaleItem, true)).to.be.equal(1);
+		});
+	});
+
+	describe('scrollToOffsetAnimated', () => {
+		const start = 1000;
+
+		function animationOf(offset: number, duration: number): ITimeScaleAnimation {
+			let animation: ITimeScaleAnimation | null = null;
+			const model = {
+				recalculateAllPanes: () => {},
+				lightUpdate: () => {},
+				setTimeScaleAnimation: (value: ITimeScaleAnimation) => { animation = value; },
+			} as unknown as ChartModel<Time>;
+			const ts = new TimeScale<Time>(model, { ...timeScaleOptionsDefaults, barSpacing: 1, rightOffset: 0 }, fakeLocalizationOptions, behavior);
+
+			const now = mock.method(performance, 'now', () => start);
+			try {
+				ts.scrollToOffsetAnimated(offset, duration);
+			} finally {
+				now.mock.restore();
+			}
+
+			expect(animation).not.to.be.equal(null);
+			return animation as unknown as ITimeScaleAnimation;
+		}
+
+		it('should be finished once the duration has passed', () => {
+			const animation = animationOf(-200, 400);
+
+			expect(animation.finished(start)).to.be.equal(false);
+			expect(animation.finished(start + 399)).to.be.equal(false);
+			expect(animation.finished(start + 1000)).to.be.equal(true);
+		});
+
+		it('should resolve to the exact target position on and after the final frame', () => {
+			const animation = animationOf(-200, 400);
+
+			expect(animation.getPosition(start + 400)).to.be.equal(-200);
+			expect(animation.getPosition(start + 100000)).to.be.equal(-200);
+		});
+
+		it('should stay at the source position for frames timestamped before the start', () => {
+			const animation = animationOf(-200, 400);
+
+			expect(animation.finished(start - 1)).to.be.equal(false);
+			expect(animation.getPosition(start - 1)).to.be.equal(0);
+			expect(animation.getPosition(start - 100)).to.be.equal(0);
 		});
 	});
 });

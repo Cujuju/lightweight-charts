@@ -113,9 +113,6 @@ export class PaneApi<HorzScaleItem> implements IPaneApi<HorzScaleItem> {
 	}
 
 	public setVisible(visible: boolean): void {
-		if (this._pane.visible() === visible) {
-			return;
-		}
 		this._pane.setVisible(visible);
 		this._chartWidget.model().fullUpdate();
 	}

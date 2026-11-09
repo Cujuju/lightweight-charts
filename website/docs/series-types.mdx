@@ -30,6 +30,8 @@ chart.timeScale().fitContent();
 
 <CodeBlock className="language-js" replaceThemeConstants chart>{areaExample}</CodeBlock>
 
+See the [Area series](/examples/series-types/area) example.
+
 ### Bar
 
 - **Series Definition**: [`BarSeries`](/api/variables/BarSeries.md)
@@ -74,6 +76,8 @@ chart.timeScale().fitContent();
 
 <CodeBlock className="language-js" replaceThemeConstants chart>{barExample}</CodeBlock>
 
+See the [Bar series](/examples/series-types/bar) example.
+
 ### Baseline
 
 - **Series Definition**: [`BaselineSeries`](/api/variables/BaselineSeries.md)
@@ -94,6 +98,8 @@ chart.timeScale().fitContent();
 `;
 
 <CodeBlock className="language-js" replaceThemeConstants chart>{baselineExample}</CodeBlock>
+
+See the [Baseline series](/examples/series-types/baseline) example.
 
 ### Candlestick
 
@@ -117,6 +123,8 @@ chart.timeScale().fitContent();
 
 <CodeBlock className="language-js" replaceThemeConstants chart>{candlestickExample}</CodeBlock>
 
+See the [Candlestick series](/examples/series-types/candlestick) example.
+
 ### Histogram
 
 - **Series Definition**: [`HistogramSeries`](/api/variables/HistogramSeries.md)
@@ -137,6 +145,8 @@ chart.timeScale().fitContent();
 `;
 
 <CodeBlock className="language-js" replaceThemeConstants chart>{histogramExample}</CodeBlock>
+
+See the [Histogram series](/examples/series-types/histogram) example.
 
 ### Line
 
@@ -159,6 +169,8 @@ chart.timeScale().fitContent();
 
 <CodeBlock className="language-js" replaceThemeConstants chart>{lineExample}</CodeBlock>
 
+See the [Line series](/examples/series-types/line) example.
+
 ### Custom series (plugins)
 
 The library enables you to create custom series types, also known as series plugins, to expand its functionality. With this feature, you can add new series types, indicators, and other visualizations.
@@ -166,7 +178,7 @@ The library enables you to create custom series types, also known as series plug
 To define a custom series type, create a class that implements the [`ICustomSeriesPaneView`](/api/interfaces/ICustomSeriesPaneView.md) interface. This class defines the rendering code that Lightweight Charts&trade; uses to draw the series on the chart.
 Once your custom series type is defined, it can be added to any chart instance using the [`addCustomSeries()`](/api/interfaces/IChartApi.md#addcustomseries) method. Custom series types function like any other series.
 
-For more information, refer to the [Plugins](./plugins/intro.md) article.
+For more information, refer to the [Plugin development](./plugins/intro.md) section, or browse the [plugin catalog](/plugins) for ready-made series plugins.
 
 ## Customization
 

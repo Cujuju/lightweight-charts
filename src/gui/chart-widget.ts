@@ -19,6 +19,7 @@ import {
 	TimeScaleInvalidation,
 	TimeScaleInvalidationType,
 } from '../model/invalidate-mask';
+import { Pane } from '../model/pane';
 import { Point } from '../model/point';
 import { Series } from '../model/series';
 import { SeriesPlotRow } from '../model/series-data';
@@ -387,7 +388,7 @@ export class ChartWidget<HorzScaleItem> implements IDestroyable, IChartWidgetBas
 		let totalWidth = 0;
 		let totalHeight = 0;
 
-		const firstPane = this._paneWidgets[0];
+		const firstPane = this._firstVisiblePaneWidget();
 
 		const drawPriceAxises = (position: 'left' | 'right', targetX: number) => {
 			let targetY = 0;
@@ -481,23 +482,11 @@ export class ChartWidget<HorzScaleItem> implements IDestroyable, IChartWidgetBas
 
 	// eslint-disable-next-line complexity
 	private _adjustSizeImpl(): void {
-		let totalStretch = 0;
 		let leftPriceAxisWidth = 0;
 		let rightPriceAxisWidth = 0;
 
-		// hidden panes take no height and no separator; they keep their stretch factor for when shown
-		const panes = this._model.panes();
-		const paneVisible = (paneIndex: number): boolean => panes[paneIndex].visible();
-		let lastVisiblePaneIndex = -1;
-		for (let paneIndex = 0; paneIndex < panes.length; ++paneIndex) {
-			if (paneVisible(paneIndex)) {
-				lastVisiblePaneIndex = paneIndex;
-			}
-		}
-
-		for (let paneIndex = 0; paneIndex < this._paneWidgets.length; ++paneIndex) {
-			const paneWidget = this._paneWidgets[paneIndex];
-			if (!paneVisible(paneIndex)) {
+		for (const paneWidget of this._paneWidgets) {
+			if (!paneWidget.state().visible()) {
 				continue;
 			}
 			if (this._isLeftAxisVisible()) {
@@ -514,7 +503,6 @@ export class ChartWidget<HorzScaleItem> implements IDestroyable, IChartWidgetBas
 					this._options.rightPriceScale.minimumWidth
 				);
 			}
-			totalStretch += paneWidget.stretchFactor();
 		}
 
 		leftPriceAxisWidth = suggestPriceScaleWidth(leftPriceAxisWidth);
@@ -525,16 +513,14 @@ export class ChartWidget<HorzScaleItem> implements IDestroyable, IChartWidgetBas
 
 		const paneWidth = Math.max(width - leftPriceAxisWidth - rightPriceAxisWidth, 0);
 
-		// separator i sits between panes i and i + 1; it shows only between two visible panes
+		const panes = this._model.panes();
+		const lastVisiblePaneIndex = panes.map((pane: Pane) => pane.visible()).lastIndexOf(true);
 		let separatorCount = 0;
 		let visiblePaneAbove = false;
-		this._paneSeparators.forEach((separator: PaneSeparator, separatorIndex: number) => {
-			visiblePaneAbove = visiblePaneAbove || paneVisible(separatorIndex);
-			const separatorVisible = visiblePaneAbove && paneVisible(separatorIndex + 1);
-			separator.setVisible(separatorVisible);
-			if (separatorVisible) {
-				separatorCount += 1;
-			}
+		this._paneSeparators.forEach((separator: PaneSeparator, index: number) => {
+			visiblePaneAbove = visiblePaneAbove || panes[index].visible();
+			separator.setVisible(visiblePaneAbove && panes[index + 1].visible());
+			separatorCount += separator.visible() ? 1 : 0;
 		});
 		const separatorHeight = SeparatorConstants.SeparatorHeight;
 		const separatorsHeight = separatorHeight * separatorCount;
@@ -544,6 +530,7 @@ export class ChartWidget<HorzScaleItem> implements IDestroyable, IChartWidgetBas
 
 		const otherWidgetHeight = separatorsHeight + timeAxisHeight;
 		const totalPaneHeight = height < otherWidgetHeight ? 0 : height - otherWidgetHeight;
+		const totalStretch = panes.reduce((sum: number, pane: Pane) => sum + (pane.visible() ? pane.stretchFactor() : 0), 0);
 		const stretchPixels = totalPaneHeight / totalStretch;
 
 		let accumulatedHeight = 0;
@@ -552,20 +539,16 @@ export class ChartWidget<HorzScaleItem> implements IDestroyable, IChartWidgetBas
 
 		for (let paneIndex = 0; paneIndex < this._paneWidgets.length; ++paneIndex) {
 			const paneWidget = this._paneWidgets[paneIndex];
-			paneWidget.setState(panes[paneIndex]);
-
-			const visible = paneVisible(paneIndex);
-			paneWidget.getElement().style.display = visible ? '' : 'none';
+			paneWidget.setState(this._model.panes()[paneIndex]);
+			paneWidget.getElement().style.display = panes[paneIndex].visible() ? '' : 'none';
+			if (!panes[paneIndex].visible()) {
+				continue;
+			}
 
 			let paneHeight = 0;
 			let calculatePaneHeight = 0;
 
-			if (!visible) {
-				// not laid out; keeps its last size so showing it again repaints at once
-				calculatePaneHeight = paneWidget.getSize().height;
-			} else if (paneIndex === lastVisiblePaneIndex) {
-				// the exact remainder: rounding it up overshot the chart by up to a device pixel at fractional
-				// pixel ratios, moving the time axis whenever the visible pane count changed
+			if (paneIndex === lastVisiblePaneIndex) {
 				calculatePaneHeight = totalPaneHeight - accumulatedHeight;
 			} else {
 				calculatePaneHeight = Math.round(paneWidget.stretchFactor() * stretchPixels * pixelRatio) / pixelRatio;
@@ -573,9 +556,7 @@ export class ChartWidget<HorzScaleItem> implements IDestroyable, IChartWidgetBas
 
 			paneHeight = Math.max(calculatePaneHeight, 2);
 
-			if (visible) {
-				accumulatedHeight += paneHeight;
-			}
+			accumulatedHeight += paneHeight;
 
 			paneWidget.setSize(size({ width: paneWidth, height: paneHeight }));
 			if (this._isLeftAxisVisible()) {
@@ -585,7 +566,7 @@ export class ChartWidget<HorzScaleItem> implements IDestroyable, IChartWidgetBas
 				paneWidget.setPriceAxisSize(rightPriceAxisWidth, 'right');
 			}
 
-			if (visible && paneWidget.state()) {
+			if (paneWidget.state()) {
 				this._model.setPaneHeight(paneWidget.state(), paneHeight);
 			}
 		}
@@ -736,9 +717,8 @@ export class ChartWidget<HorzScaleItem> implements IDestroyable, IChartWidgetBas
 				timeScale.restoreDefault();
 				break;
 			case TimeScaleInvalidationType.Animation:
-				if (!invalidation.value.finished(time)) {
-					timeScale.setRightOffset(invalidation.value.getPosition(time));
-				}
+				// apply the frame even if the animation has just finished, otherwise the view stops short of the target
+				timeScale.setRightOffset(invalidation.value.getPosition(time));
 				break;
 		}
 	}
@@ -919,6 +899,10 @@ export class ChartWidget<HorzScaleItem> implements IDestroyable, IChartWidgetBas
 	private _updateTimeAxisVisibility(): void {
 		const display = this._options.timeScale.visible ? '' : 'none';
 		this._timeAxisWidget.getElement().style.display = display;
+	}
+
+	private _firstVisiblePaneWidget(): PaneWidget {
+		return this._paneWidgets.find((paneWidget: PaneWidget) => paneWidget.state().visible()) ?? this._paneWidgets[0];
 	}
 
 	private _isLeftAxisVisible(): boolean {

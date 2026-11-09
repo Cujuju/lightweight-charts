@@ -14,13 +14,13 @@ export const enum SeparatorConstants {
 }
 
 interface ResizeInfo {
-	topPane: PaneWidget;
 	startY: number;
 	totalStretch: number;
 	prevStretchTopPane: number;
 	pixelStretchFactor: number;
 	minPaneStretch: number;
 	maxPaneStretch: number;
+	topPane: PaneWidget;
 }
 
 interface Handle {
@@ -33,7 +33,6 @@ export class PaneSeparator implements IDestroyable {
 	private readonly _rowElement: HTMLTableRowElement;
 	private readonly _cell: HTMLTableCellElement;
 	private readonly _topPane: PaneWidget;
-	private readonly _topPaneIndex: number;
 	private readonly _bottomPane: PaneWidget;
 	private _visible: boolean = true;
 
@@ -45,7 +44,6 @@ export class PaneSeparator implements IDestroyable {
 	public constructor(chartWidget: IChartWidgetBase, topPaneIndex: number, bottomPaneIndex: number) {
 		this._chartWidget = chartWidget;
 		this._topPane = chartWidget.paneWidgets()[topPaneIndex];
-		this._topPaneIndex = topPaneIndex;
 		this._bottomPane = chartWidget.paneWidgets()[bottomPaneIndex];
 
 		this._rowElement = document.createElement('tr');
@@ -97,7 +95,7 @@ export class PaneSeparator implements IDestroyable {
 
 	public getBitmapSize(): Size {
 		return size({
-			width: this._topPane.getBitmapSize().width,
+			width: this._bottomPane.getBitmapSize().width,
 			height: SeparatorConstants.SeparatorHeight * window.devicePixelRatio,
 		});
 	}
@@ -172,18 +170,18 @@ export class PaneSeparator implements IDestroyable {
 
 		this._handle = { element, backgroundElement };
 	}
-	private _nearestVisiblePaneAbove(): PaneWidget | null {
+	private _visiblePaneAbove(): PaneWidget {
 		const paneWidgets = this._chartWidget.paneWidgets();
-		for (let paneIndex = this._topPaneIndex; paneIndex >= 0; paneIndex--) {
+		for (let paneIndex = paneWidgets.indexOf(this._topPane); paneIndex > 0; paneIndex--) {
 			if (paneWidgets[paneIndex].state().visible()) {
 				return paneWidgets[paneIndex];
 			}
 		}
-		return null;
+		return paneWidgets[0];
 	}
 
 	private _updateBorderColor(): void {
-		this._cell.style.background = this._chartWidget.options()['layout'].panes.separatorColor;
+		this._cell.style.backgroundColor = this._chartWidget.options()['layout'].panes.separatorColor;
 	}
 
 	private _mouseOverEvent(event: TouchMouseEvent): void {
@@ -202,11 +200,7 @@ export class PaneSeparator implements IDestroyable {
 			return;
 		}
 
-		// hidden panes between this separator and the pane it resizes take no height
-		const topPane = this._nearestVisiblePaneAbove();
-		if (topPane === null) {
-			return;
-		}
+		const topPane = this._visiblePaneAbove();
 		const totalStretch = topPane.state().stretchFactor() + this._bottomPane.state().stretchFactor();
 		const totalHeight = topPane.getSize().height + this._bottomPane.getSize().height;
 		const pixelStretchFactor = totalStretch / totalHeight;
@@ -219,13 +213,13 @@ export class PaneSeparator implements IDestroyable {
 		}
 
 		this._resizeInfo = {
-			topPane,
 			startY: event.pageY,
 			prevStretchTopPane: topPane.state().stretchFactor(),
 			maxPaneStretch: totalStretch - minPaneStretch,
 			totalStretch,
 			pixelStretchFactor,
 			minPaneStretch,
+			topPane,
 		};
 
 		this._handle.backgroundElement.style.display = 'block';

@@ -110,14 +110,14 @@ Use local typings first. The repo paths below exist only in the upstream `lightw
 |---|---|
 | First chart / series | `website/docs/intro.mdx`, `website/tutorials/customization/` |
 | Time / range behavior | `website/docs/time-scale.md`, `website/docs/time-zones.md` |
-| Realtime / history | `website/tutorials/demos/realtime-updates.{mdx,js}`, `website/tutorials/demos/infinite-history.{mdx,js}` |
-| Whitespace / gaps | `website/tutorials/demos/whitespace.{mdx,js}` |
-| Price format / locale | `website/tutorials/customization/price-format.mdx`, `website/tutorials/demos/custom-locale.{mdx,js}` |
-| Two scales / inverted | `website/tutorials/how_to/two-price-scales.{mdx,js}`, `website/tutorials/how_to/inverted-price-scale.{mdx,js}` |
-| Panes / price + volume | `website/docs/panes.md`, `website/tutorials/how_to/panes.{mdx,js}`, `website/tutorials/how_to/price-and-volume.{mdx,js}` |
-| Markers / tooltips / legends | `website/tutorials/how_to/series-markers.{mdx,js}`, `website/tutorials/how_to/tooltips.mdx`, `website/tutorials/how_to/legends.mdx` |
-| Crosshair (programmatic) | `website/tutorials/how_to/set-crosshair-position*.js` |
-| Watermarks | `website/tutorials/how_to/watermark.mdx` |
+| Realtime / history | `website/examples/data/realtime-updates.{mdx,js}`, `website/examples/data/infinite-history.{mdx,js}` |
+| Whitespace / gaps | `website/examples/data/whitespace.{mdx,js}` |
+| Price format / locale | `website/tutorials/customization/price-format.mdx`, `website/examples/styling/custom-locale.{mdx,js}` |
+| Two scales / inverted | `website/examples/price-scales/two-price-scales.{mdx,js}`, `website/examples/price-scales/inverted-price-scale.{mdx,js}` |
+| Panes / price + volume | `website/docs/panes.md`, `website/examples/panes/multiple-panes.{mdx,js}`, `website/examples/price-scales/price-and-volume.{mdx,js}` |
+| Markers / tooltips / legends | `website/examples/markers-and-lines/series-markers.{mdx,js}`, `website/examples/tooltips-and-legends/*-tooltip.{mdx,js}`, `website/examples/tooltips-and-legends/*legend.{mdx,js}` |
+| Crosshair (programmatic) | `website/examples/crosshair/*.{mdx,js}` |
+| Watermarks | `website/examples/styling/*-watermark.{mdx,js}` |
 | Plugins / custom series / primitives | `website/docs/plugins/`, `plugin-examples/src/plugins/` |
 | Coordinate conversion / hit-testing | `dist/typings.d.ts` for `subscribeClick`, `coordinateToPrice`, `timeScale().coordinateToLogical` |
 | Non-time horizontal scales / options chart | `dist/typings.d.ts` for `createOptionsChart`, `createChartEx`, `IHorzScaleBehavior` |
@@ -138,6 +138,7 @@ If these repo paths do not exist in the user's project, do not ask them to creat
 - **Pre-shifting timestamps changes chart semantics.** It can make ticks line up in a chosen timezone, but it also changes where bars sit on the UTC time scale. Prefer formatter-based display unless the user intentionally wants shifted data.
 - **Series data must be strictly ascending by `time`, with unique values.** Duplicates replace silently; out-of-order points are dropped or throw.
 - **One time format per series.** `BusinessDay` (`'YYYY-MM-DD'` string or `{ year, month, day }`) or `UTCTimestamp`, but do not mix within a single series.
+- **Business day strings must be zero-padded `'YYYY-MM-DD'`.** `'2024-1-5'`, `'2024/01/05'` or `'Jan 5 2024'` throw. Pad the string or pass `{ year, month, day }`.
 - **Whitespace points carry `time` only** (no `value` / `open` / …). Use them to create gaps or align overlays; do not set values to `null`.
 - **`setData` replaces the dataset and can reset the visible range. `update(point)` appends if `time > last` and replaces if `time === last`.** `update(point, true)` can update an existing historical point, but it is slower and does not insert missing old points. To prepend older history, build a new array and call `setData` again — there is no prepend method; save and restore the visible logical range to avoid the chart snapping.
 - **`timeScale.setVisibleLogicalRange` is logical (bar indices), not time-based.** Use `setVisibleRange` for time bounds, or `fitContent()` to reset.
@@ -175,6 +176,7 @@ If these repo paths do not exist in the user's project, do not ask them to creat
 - **Create the chart once** in `useEffect` / `onMounted` and destroy it in cleanup with `chart.remove()`. Recreating on every render duplicates DOM and leaks listeners.
 - **Resize can be automatic in v5** with `autoSize: true` when `ResizeObserver` is available. If you need manual control, subscribe a `ResizeObserver` to the container and call `chart.resize(width, height)` (or `applyOptions({ width, height })`).
 - **Don't drive `setData` from props on every render.** Use `series.update(...)` for incremental changes; only call `setData` when the dataset truly replaces.
+- **`undefined` in `applyOptions` means "not specified", not "reset".** `{ priceFormatter: custom ? fmt : undefined }` leaves the current formatter in place. To clear a `localization` formatter or `autoscaleInfoProvider`, pass `null`. Other options have no reset value: pass the default explicitly.
 - **Next.js/SSR must be client-only.** Put chart code in a `'use client'` component, create it in `useEffect`, and import that component with `next/dynamic(..., { ssr: false })` from server-rendered pages when needed.
 - **Plain HTML is not npm resolution.** The standalone `.js` build exposes `window.LightweightCharts`; ESM in the browser must import an actual `.mjs` URL or use an import map. `import { createChart } from 'lightweight-charts'` only works when a bundler/runtime resolves the package name.
 
@@ -454,6 +456,8 @@ chart.applyOptions({
 
 For per-series formatting, set `priceFormat: { type: 'custom', formatter, minMove }` in the series options — the chart-level `priceFormatter` is the fallback.
 
+To go back to the built-in formatting, pass `null`: `chart.applyOptions({ localization: { priceFormatter: null } })`. Passing `undefined` leaves the current formatter in place.
+
 ### Minimal pane primitive
 
 ```ts
@@ -493,7 +497,7 @@ Working examples live under `plugin-examples/src/plugins/` — copy structure fr
 2. **Suspect:** the code calls `series.setData(...)` on every tick instead of `series.update(...)`. `setData` resets the visible range.
 3. **Verify:** ask whether the call path is `setData` or `update`. If `setData`, ask whether the visible logical range is captured before and restored after — the v4-era workaround.
 4. **Fix:** switch to `series.update(bar)` for incremental ticks; reserve `setData` for full-history replacement; only use `chart.timeScale().scrollToRealTime()` if the user explicitly wants follow-the-latest behavior.
-5. **References:** `website/tutorials/demos/realtime-updates.js`, `website/docs/time-scale.md`.
+5. **References:** `website/examples/data/realtime-updates.js`, `website/docs/time-scale.md`.
 
 ## Code-generation rules
 

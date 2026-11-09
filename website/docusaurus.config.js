@@ -9,6 +9,7 @@ import pluginDocusaurus from 'docusaurus-plugin-typedoc';
 import logger from '@docusaurus/logger';
 
 import versions from './versions.json';
+import { docsMarkdownPlugin } from './plugins/docs-markdown/index.js';
 
 /* Configuration Constants */
 const organizationName = process.env.GITHUB_ORGANIZATION_NAME || 'tradingview';
@@ -267,7 +268,13 @@ const getConfig = async () => {
 			],
 		],
 
-		customFields: {},
+		clientModules: ['./src/client-modules/theme-switch-without-transitions.ts'],
+
+		customFields: {
+			// Frozen at build time so the server-rendered markup and the
+			// hydrated client derive the same "New" badge (no Date.now() in render).
+			catalogueBuildTime: Date.now(),
+		},
 
 		themeConfig: {
 			navbar: {
@@ -293,6 +300,16 @@ const getConfig = async () => {
 						docId: 'api/index',
 						position: 'left',
 						label: 'API Reference',
+					},
+					{
+						to: '/examples',
+						position: 'left',
+						label: 'Examples',
+					},
+					{
+						to: '/plugins',
+						position: 'left',
+						label: 'Plugins',
 					},
 					{
 						type: 'docsVersionDropdown',
@@ -324,6 +341,10 @@ const getConfig = async () => {
 							{
 								label: 'Tutorials',
 								to: '/tutorials',
+							},
+							{
+								label: 'Examples',
+								to: '/examples',
 							},
 							{
 								label: 'API Reference',
@@ -410,6 +431,19 @@ const getConfig = async () => {
 				},
 			],
 			[
+				'content-docs',
+				{
+					id: 'examples',
+					path: 'examples',
+					routeBasePath: 'examples',
+					sidebarPath: new URL('./sidebars-examples.js', import.meta.url)
+						.pathname,
+					// Laid out like the plugin catalog rather than as docs pages.
+					docRootComponent: '@site/src/components/ExamplesRoot',
+					docItemComponent: '@site/src/components/ExampleItem',
+				},
+			],
+			[
 				'docusaurus-plugin-typedoc',
 				{
 					...commonDocusaurusPluginTypedocConfig,
@@ -422,6 +456,8 @@ const getConfig = async () => {
 			...versions.map(typedocPluginForVersion),
 			'./plugins/enhanced-codeblock',
 			'./plugins/suppress-resize-observer-error',
+			'./plugins/plugin-catalogue',
+			docsMarkdownPlugin,
 		],
 	};
 

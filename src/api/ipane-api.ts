@@ -92,16 +92,9 @@ export interface IPaneApi<HorzScaleItem> {
 	preserveEmptyPane(): boolean;
 
 	/**
-	 * Shows or hides the pane.
-	 * A hidden pane takes no height and has no separator; the visible panes share the chart's height.
-	 * Its series, price scales and stretch factor are kept, so showing it again restores its size.
+	 * Shows or hides the pane. A hidden pane takes no height and keeps its series and stretch factor.
 	 *
 	 * @param visible - Whether the pane is shown
-	 * @example
-	 * ```js
-	 * // show only the first pane
-	 * chart.panes().forEach((pane, index) => pane.setVisible(index === 0));
-	 * ```
 	 */
 	setVisible(visible: boolean): void;
 

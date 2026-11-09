@@ -107,6 +107,21 @@ describe('Helpers', () => {
 			expect((Object.prototype as any).polluted).to.be.undefined;
 		});
 
+		it('should assign null as a leaf value over a primitive', () => {
+			const result = merge({ a: 'str', b: 1 }, { a: null });
+			expect(result).to.deep.equal({ a: null, b: 1 });
+		});
+
+		it('should assign null as a leaf value over an object', () => {
+			const result = merge({ a: { b: 1 } }, { a: null });
+			expect(result).to.deep.equal({ a: null });
+		});
+
+		it('should assign null when the destination key is absent', () => {
+			const result = merge({}, { a: null });
+			expect(result).to.deep.equal({ a: null });
+		});
+
 		it('should handle circular references safely', () => {
 			const dst: Record<string, unknown> = { a: 1 };
 			dst.circular = dst;
@@ -163,6 +178,24 @@ describe('Helpers', () => {
 			expect(({} as any).polluted).to.be.undefined;
 			expect((Object.prototype as any).polluted).to.be.undefined;
 			expect(Object.prototype.toString).to.equal(originalProto);
+		});
+
+		it('should not be defeated by a shadowed hasOwnProperty', () => {
+			const shadowed = JSON.parse('{ "hasOwnProperty": 1, "value": 1234, "nested": { "hasOwnProperty": 1 } }');
+
+			const cloned = clone(shadowed);
+
+			expect(cloned).to.deep.equal(shadowed);
+			expect(cloned.nested).to.not.equal(shadowed.nested);
+		});
+
+		it('should clone merged options containing a shadowed hasOwnProperty', () => {
+			const userOptions = JSON.parse('{ "leftPriceScale": { "hasOwnProperty": 1 } }') as Record<string, unknown>;
+			const options = merge({ leftPriceScale: { visible: true } }, userOptions);
+
+			expect(() => {
+				clone(options.leftPriceScale);
+			}).to.not.throw();
 		});
 	});
 	/* eslint-enable

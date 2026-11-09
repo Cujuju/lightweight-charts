@@ -127,8 +127,14 @@ export class KineticAnimation {
 
 	public getPosition(time: number): Coordinate {
 		const startPosition = ensureNotNull(this._animationStartPosition);
-		const durationMsecs = time - startPosition.time;
+		const durationMsecs = this._progressDuration(time);
 		return startPosition.position + this._speedPxPerMsec * (Math.pow(this._dumpingCoeff, durationMsecs) - 1) / (Math.log(this._dumpingCoeff)) as Coordinate;
+	}
+
+	public shift(delta: number): void {
+		if (this._animationStartPosition !== null) {
+			this._animationStartPosition.position = this._animationStartPosition.position - delta as Coordinate;
+		}
 	}
 
 	public finished(time: number): boolean {
@@ -137,7 +143,8 @@ export class KineticAnimation {
 
 	private _progressDuration(time: number): number {
 		const startPosition = ensureNotNull(this._animationStartPosition);
-		const progress = time - startPosition.time;
+		// the first frame's timestamp can be earlier than the animation start, so don't move backwards
+		const progress = Math.max(0, time - startPosition.time);
 		return Math.min(progress, this._durationMsecs);
 	}
 }

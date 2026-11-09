@@ -303,6 +303,7 @@ export interface ITimeScale {
 
 	barSpacing(): number;
 	rightOffset(): number;
+	kineticScrollPosition(): number;
 
 	indexesToCoordinates<T extends TimedValue>(points: T[], visibleRange?: SeriesItemsIndexesRange): void;
 	indexToTimeScalePoint(index: TimePointIndex): TimeScalePoint | null;
@@ -339,6 +340,7 @@ export class TimeScale<HorzScaleItem> implements ITimeScale {
 
 	private readonly _optionsApplied: Delegate = new Delegate();
 	private _commonTransitionStartState: TransitionState | null = null;
+	private _appendCompensation: number = 0;
 	private _timeMarksCache: TimeMark[] | null = null;
 
 	private _indicesWithData: Map<TimePointIndex, boolean> = new Map();
@@ -378,7 +380,7 @@ export class TimeScale<HorzScaleItem> implements ITimeScale {
 		this._updateDateTimeFormatter();
 	}
 
-	public applyOptions(options: DeepPartial<HorzScaleOptions>, localizationOptions?: DeepPartial<LocalizationOptions<HorzScaleItem>>): void {
+	public applyOptions(options: DeepPartial<HorzScaleOptions>): void {
 		merge(this._options, options);
 
 		if (this._options.fixLeftEdge) {
@@ -590,6 +592,31 @@ export class TimeScale<HorzScaleItem> implements ITimeScale {
 		this._correctOffset();
 		this._model.recalculateAllPanes();
 		this._model.lightUpdate();
+	}
+
+	/**
+	 * Shifts the right offset to compensate for bars being appended or replace to the right
+	 * so that the visible range stays in place.
+	 */
+	public shiftRightOffset(delta: number): void {
+		if (this._commonTransitionStartState !== null) {
+			this._commonTransitionStartState.rightOffset -= delta;
+		}
+
+		const rightOffsetBefore = this._rightOffset;
+		this.setRightOffset(rightOffsetBefore - delta);
+		this._appendCompensation += rightOffsetBefore - this._rightOffset;
+	}
+
+	/**
+	 * The right offset plus every compensation applied by {@link shiftRightOffset}.
+	 * Unlike `rightOffset()` it does not change when bars appended during a drag are compensated,
+	 * and unlike `baseIndex() + rightOffset()` it does not change when older bars are prepended
+	 * or when the visible range is shifted for a new bar, so it only moves when the view itself moves.
+	 * Used to sample the velocity of a scroll gesture for kinetic scrolling.
+	 */
+	public kineticScrollPosition(): number {
+		return this._rightOffset + this._appendCompensation;
 	}
 
 	public barSpacing(): number {
@@ -834,15 +861,22 @@ export class TimeScale<HorzScaleItem> implements ITimeScale {
 			throw new RangeError('animationDuration (optional) must be finite positive number');
 		}
 
-		const source = this._rightOffset;
+		let source = this._rightOffset;
 		const animationStart = performance.now();
 
 		this._model.setTimeScaleAnimation({
 			finished: (time: number) => (time - animationStart) / animationDuration >= 1,
 			getPosition: (time: number) => {
-				const animationProgress = (time - animationStart) / animationDuration;
+				// the first frame's timestamp can be earlier than the animation start, so don't move backwards
+				const animationProgress = Math.max(0, (time - animationStart) / animationDuration);
 				const finishAnimation = animationProgress >= 1;
 				return finishAnimation ? offset : source + (offset - source) * animationProgress;
+			},
+			shift: (delta: number) => {
+				const progress = (performance.now() - animationStart) / animationDuration;
+				if (progress < 1) {
+					source -= delta / (1 - progress);
+				}
 			},
 		});
 	}
@@ -913,7 +947,7 @@ export class TimeScale<HorzScaleItem> implements ITimeScale {
 	}
 
 	public formatDateTime(timeScalePoint: TimeScalePoint): string {
-		if (this._localizationOptions.timeFormatter !== undefined) {
+		if (this._localizationOptions.timeFormatter != null) {
 			return this._localizationOptions.timeFormatter(timeScalePoint.originalTime as HorzScaleItem);
 		}
 
@@ -1122,7 +1156,7 @@ export class TimeScale<HorzScaleItem> implements ITimeScale {
 
 		const barsEstimation = this._options.fixLeftEdge
 			? this._width / this._barSpacing
-			: Math.min(Constants.MinVisibleBarsCount, this._points.length);
+			: Math.min(Constants.MinVisibleBarsCount, this._points.length, this._width / this._barSpacing);
 
 		return firstIndex - baseIndex - 1 + barsEstimation;
 	}
@@ -1130,7 +1164,7 @@ export class TimeScale<HorzScaleItem> implements ITimeScale {
 	private _maxRightOffset(): number {
 		return this._options.fixRightEdge
 			? 0
-			: (this._width / this._barSpacing) - Math.min(Constants.MinVisibleBarsCount, this._points.length);
+			: (this._width / this._barSpacing) - Math.min(Constants.MinVisibleBarsCount, this._points.length, this._width / this._barSpacing);
 	}
 
 	private _saveCommonTransitionsStartState(): void {

@@ -524,6 +524,26 @@ describe('DataLayer', () => {
 		expect(() => stringToBusinessDay('2019-15-01')).to.throw();
 	});
 
+	it('stringToBusinessDay should parse yyyy-mm-dd dates regardless of timezone and reject other formats', () => {
+		const originalTz = process.env.TZ;
+		try {
+			for (const tz of ['Asia/Kolkata', 'Pacific/Kiritimati', 'UTC', 'America/New_York']) {
+				process.env.TZ = tz;
+				expect(stringToBusinessDay('2026-01-05'), tz).to.be.deep.equal({ day: 5, month: 1, year: 2026 });
+				expect(stringToBusinessDay('2026-12-31'), tz).to.be.deep.equal({ day: 31, month: 12, year: 2026 });
+				for (const value of ['2026-1-5', '2026-01-5', '2026-1-05', '2026/01/05', 'Jan 5 2026', '2026-01-05T00:00:00Z']) {
+					expect(() => stringToBusinessDay(value), `${tz} ${value}`).to.throw(`Invalid date string=${value}`);
+				}
+			}
+		} finally {
+			if (originalTz === undefined) {
+				delete process.env.TZ;
+			} else {
+				process.env.TZ = originalTz;
+			}
+		}
+	});
+
 	it('should ignore "value" fields on OHLC-based series update', () => {
 		const ohlcBasedTypes: SeriesType[] = ['Bar', 'Candlestick'];
 
@@ -622,6 +642,30 @@ describe('DataLayer', () => {
 		expect(seriesUpdate).not.to.be.equal(undefined);
 
 		expect(seriesUpdate?.data).excludingEvery(['value', 'originalTime']).to.have.deep.members([
+			{ index: 0, time: { timestamp: 1000 } },
+			{ index: 1, time: { timestamp: 3000 } },
+		]);
+	});
+
+	it('should keep time-scale points when the only series is set twice before another series is added gh#2154', () => {
+		const dataLayer = new DataLayer<Time>(behavior);
+		const series1 = createSeriesMock();
+		const series2 = createSeriesMock();
+
+		dataLayer.setSeriesData(series1, [dataItemAt(1000 as UTCTimestamp), dataItemAt(3000 as UTCTimestamp)]);
+		dataLayer.setSeriesData(series1, [dataItemAt(1000 as UTCTimestamp), dataItemAt(3000 as UTCTimestamp)]);
+		dataLayer.setSeriesData(series2, [dataItemAt(1000 as UTCTimestamp), dataItemAt(3000 as UTCTimestamp)]);
+
+		const updateResult = dataLayer.setSeriesData(series1, [dataItemAt(1000 as UTCTimestamp), dataItemAt(3000 as UTCTimestamp)]);
+
+		expect(updateResult.timeScale.baseIndex).to.be.equal(1 as TimePointIndex);
+		expect(updateResult.timeScale.points).to.be.equal(undefined);
+		expect(updateResult.timeScale.firstChangedPointIndex).to.be.equal(undefined);
+		expect(updateResult.series.size).to.be.equal(1);
+
+		const series1Update = updateResult.series.get(series1);
+		expect(series1Update).not.to.be.equal(undefined);
+		expect(series1Update?.data).excludingEvery(['value', 'originalTime']).to.have.deep.members([
 			{ index: 0, time: { timestamp: 1000 } },
 			{ index: 1, time: { timestamp: 3000 } },
 		]);
