@@ -1,4 +1,3 @@
-// Modified by Cujuju (2026): adds pane visibility (IPaneApi.setVisible). See MODIFICATIONS.md.
 import { assert, ensureDefined, ensureNotNull } from '../helpers/assertions';
 import { Delegate } from '../helpers/delegate';
 import { IDestroyable } from '../helpers/idestroyable';

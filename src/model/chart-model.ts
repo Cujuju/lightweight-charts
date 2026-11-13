@@ -1,4 +1,3 @@
-// Modified by Cujuju (2026): adds pane visibility (IPaneApi.setVisible). See MODIFICATIONS.md.
 /// <reference types="_build-time-constants" />
 
 import { assert, ensureNotNull } from '../helpers/assertions';

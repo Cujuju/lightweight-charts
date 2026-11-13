@@ -1,4 +1,3 @@
-// Modified by Cujuju (2026): adds pane visibility (IPaneApi.setVisible). See MODIFICATIONS.md.
 import { IChartWidgetBase } from '../gui/chart-widget';
 
 import { assert } from '../helpers/assertions';

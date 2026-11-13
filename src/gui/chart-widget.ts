@@ -1,4 +1,3 @@
-// Modified by Cujuju (2026): adds pane visibility (IPaneApi.setVisible). See MODIFICATIONS.md.
 import { Size, size } from 'fancy-canvas';
 
 import { ensureDefined, ensureNotNull } from '../helpers/assertions';

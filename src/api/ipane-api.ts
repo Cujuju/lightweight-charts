@@ -1,4 +1,3 @@
-// Modified by Cujuju (2026): adds pane visibility (IPaneApi.setVisible). See MODIFICATIONS.md.
 import { WhitespaceData } from '../model/data-consumer';
 import { CustomData, ICustomSeriesPaneView } from '../model/icustom-series';
 import { CustomSeriesOptions, SeriesPartialOptions, SeriesPartialOptionsMap, SeriesType } from '../model/series-options';
