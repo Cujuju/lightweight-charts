@@ -37,21 +37,24 @@ setting ignores the `exports` field and will report the imports as unresolved.
 | `axis-label-view` | `AxisLabelView`, `AxisLabelSource` — a price- or time-axis label over a source that may have no coordinate yet |
 | `canvas/markers` | `beginMarker`, `beginMarkerOffset`, `traceMarker`, `traceMarkerOffset`, `markerDistance`, `markerVertices`, `segmentDistance`, `MarkerShape` — circle, square, diamond and triangle markers, one per path (`begin*`, which start the path) or many to a path (`trace*`), the ring around them, and the distance to them as drawn, for hit testing, all from the same vertices |
 | `canvas/round-rect` | `drawRoundRect`, `drawRoundRectWithBorder`, `clampCornerRadius`, `CornerRadii` — rounded rectangles with an inset border |
+| `chart/compat` | `supportsSeriesOrder` — runtime checks for series methods newer than 5.0 (`setSeriesOrder`, 5.0.6) that narrow the series, so that a plugin calls them where the host has them and still supports 5.0 |
 | `chart/interaction-flags` | `canUserMoveTimeScale`, `TIME_SCALE_MOVE_FLAGS` — whether `handleScroll` / `handleScale` let the user scroll or zoom the time scale, by the library's own rule |
 | `chart/lifecycle` | `isChartRemoved`, `isSeriesAttached` — side-effect-free checks for a removed chart and a series taken off the chart |
 | `chart/time-axis-labels` | `timeAxisLabelFont`, `tickMarkPixelsPerCharacter`, `tickMarkMaxLabelWidth`, `tickMarkCharactersForWidth` — the time axis' label font, and `tickMarkMaxCharacterLength` to pixels and back |
 | `closest-index` | `ClosestTimeIndexFinder` — cached binary search for the first index at or after (or last at or before) a time |
+| `custom-series/compat` | `CustomSeriesHitTestResult`, `ConflationContext` — types only: the library's hit test result (5.2) and conflation context (5.1), so a plugin can implement `hitTest` and `conflationReducer` and still support 5.0 |
+| `custom-series/hit-test` | `distanceToRange`, `seriesHitTestTolerance`, `nearestBar`, `nearestVerticalRange`, `createHitTestDataCache` — a renderer's `hitTest`: the series' tolerance, the visible bar nearest the pointer within it by any distance or, for bars that span a vertical range, by the distance to their box, and one `hitTestData` object per hovered item |
 | `custom-series/line-paths` | `buildLinePath`, `buildStepLinePath`, `areaBetween`, `strokeStyledPolyline` — polylines (straight or stepped), the band between two lines, and a line whose style, dash pattern included, changes along its length |
 | `custom-series/options-aware-series` | `createOptionsAwareSeries`, `createWhitespaceSeries`, `OptionsAwareSeries` — retain accepted input, bind price-value builders to current options and refresh stored values when scaling options change |
 | `custom-series/renderer-base` | `CustomSeriesRendererBase`, `CustomSeriesDrawArgs` — a custom series renderer with the data and visible-range guards done, leaving `drawImpl`. A renderer's `hitTest` must return the same `hitTestData` object while the same item stays hovered |
 | `custom-series/stacking` | `cumulativeSum`, `stackLevels`, `stackedPlotValues` — running totals, the band boundaries of a stack drawn from a base, and the autoscale values of a stack that may contain negatives |
-| `custom-series/visible-bars` | `forEachVisibleBar`, `mapVisibleBars`, `extendRange`, `visibleSegments`, `whitespaceGapCheck`, `AcceptedInput`, `barCoordinate`, `getConflationFactor` — iterate the visible bars only, reach the pane edge, split at whitespace gaps wide enough to see at the current bar spacing |
+| `custom-series/visible-bars` | `forEachVisibleBar`, `mapVisibleBars`, `extendRange`, `visibleSegments`, `whitespaceGapCheck`, `AcceptedInput`, `barCoordinate`, `getConflationFactor`, `effectiveBarSpacing` — iterate the visible bars only, reach the pane edge, split at whitespace gaps wide enough to see at the current bar spacing, size a conflated bar to the slots it covers |
 | `delegate` | `Delegate`, `ISubscription` — a small subscribe/fire event primitive |
 | `dimensions/candles` | `candlestickWidth` — the body width the chart itself would use at a given bar spacing |
 | `dimensions/columns` | `calculateColumnPositions`, `calculateColumnPositionsInPlace` — evenly spaced column bars with consistent gaps |
 | `dimensions/common` | `BitmapPositionLength` — the `{ position, length }` pair the other dimension helpers return |
 | `dimensions/crosshair-width` | `gridAndCrosshairMediaWidth`, `gridAndCrosshairBitmapWidth` — line widths matching the grid and crosshair |
-| `dimensions/full-width` | `fullBarWidth` — a bar spanning the whole slot, with no gap |
+| `dimensions/full-width` | `fullBarWidth`, `fullBarWidthAfter` — a bar spanning the whole slot, and one starting where its neighbor ended, so neighbors share an edge |
 | `dimensions/positions` | `positionsBox`, `positionsLine` — pixel-perfect boxes and lines from two coordinates |
 | `dom/media-query` | `subscribeMediaQuery`, `mediaQueryMatches`, `HIGH_CONTRAST_QUERIES`, `REDUCED_MOTION_QUERY` — shared, SSR-safe media query subscriptions |
 | `dom/pane-element` | `paneContentElement`, `chartTableElement` — the pane's canvas wrapper to append DOM overlays to, and the chart table |

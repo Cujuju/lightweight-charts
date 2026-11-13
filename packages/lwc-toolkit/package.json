@@ -30,6 +30,10 @@
 			"types": "./dist/canvas/round-rect.d.ts",
 			"default": "./dist/canvas/round-rect.js"
 		},
+		"./chart/compat": {
+			"types": "./dist/chart/compat.d.ts",
+			"default": "./dist/chart/compat.js"
+		},
 		"./chart/interaction-flags": {
 			"types": "./dist/chart/interaction-flags.d.ts",
 			"default": "./dist/chart/interaction-flags.js"
@@ -45,6 +49,14 @@
 		"./closest-index": {
 			"types": "./dist/closest-index.d.ts",
 			"default": "./dist/closest-index.js"
+		},
+		"./custom-series/compat": {
+			"types": "./dist/custom-series/compat.d.ts",
+			"default": "./dist/custom-series/compat.js"
+		},
+		"./custom-series/hit-test": {
+			"types": "./dist/custom-series/hit-test.d.ts",
+			"default": "./dist/custom-series/hit-test.js"
 		},
 		"./custom-series/line-paths": {
 			"types": "./dist/custom-series/line-paths.d.ts",
@@ -169,8 +181,8 @@
 		"lightweight-charts": "^5.0.0"
 	},
 	"devDependencies": {
-		"@types/chai": "5.2.1",
-		"@types/node": "22.13.14",
+		"@types/chai": "5.2.3",
+		"@types/node": "22.20.5",
 		"chai": "5.2.0",
 		"lightweight-charts": "workspace:*",
 		"typescript": "5.9.3"

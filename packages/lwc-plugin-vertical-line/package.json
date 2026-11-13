@@ -1,6 +1,6 @@
 {
 	"name": "@tradingview/lwc-plugin-vertical-line",
-	"version": "1.0.0",
+	"version": "1.0.1",
 	"description": "Full-height vertical line at a given time, with an optional label on the time axis, for marking events, trades, and session boundaries.",
 	"author": "TradingView",
 	"license": "Apache-2.0",
@@ -56,7 +56,7 @@
 		"lightweight-charts": "workspace:*",
 		"publint": "0.3.14",
 		"typescript": "5.9.3",
-		"vite": "8.2.2"
+		"vite": "8.3.7"
 	},
 	"lwcPlugin": {
 		"title": "Vertical line",

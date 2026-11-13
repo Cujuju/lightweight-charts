@@ -88,7 +88,7 @@ export class PaneSeparator implements IDestroyable {
 
 	public getSize(): Size {
 		return size({
-			width: this._topPane.getSize().width,
+			width: this._bottomPane.getSize().width,
 			height: SeparatorConstants.SeparatorHeight,
 		});
 	}
@@ -170,14 +170,13 @@ export class PaneSeparator implements IDestroyable {
 
 		this._handle = { element, backgroundElement };
 	}
-	private _visiblePaneAbove(): PaneWidget {
+	private _visiblePaneAbove(): PaneWidget | null {
 		const paneWidgets = this._chartWidget.paneWidgets();
-		for (let paneIndex = paneWidgets.indexOf(this._topPane); paneIndex > 0; paneIndex--) {
-			if (paneWidgets[paneIndex].state().visible()) {
-				return paneWidgets[paneIndex];
-			}
+		let paneIndex = paneWidgets.indexOf(this._topPane);
+		while (paneIndex >= 0 && !paneWidgets[paneIndex].state().visible()) {
+			paneIndex--;
 		}
-		return paneWidgets[0];
+		return paneIndex >= 0 ? paneWidgets[paneIndex] : null;
 	}
 
 	private _updateBorderColor(): void {
@@ -201,6 +200,10 @@ export class PaneSeparator implements IDestroyable {
 		}
 
 		const topPane = this._visiblePaneAbove();
+		// A pane hidden earlier in this frame leaves its separator displayed until the next layout.
+		if (topPane === null || !this._bottomPane.state().visible()) {
+			return;
+		}
 		const totalStretch = topPane.state().stretchFactor() + this._bottomPane.state().stretchFactor();
 		const totalHeight = topPane.getSize().height + this._bottomPane.getSize().height;
 		const pixelStretchFactor = totalStretch / totalHeight;

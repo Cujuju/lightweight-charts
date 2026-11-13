@@ -2,6 +2,7 @@
 import { IChartWidgetBase } from '../gui/chart-widget';
 
 import { assert } from '../helpers/assertions';
+import { warn } from '../helpers/logger';
 
 import { CustomData, ICustomSeriesPaneView } from '../model/icustom-series';
 import { IPanePrimitiveBase } from '../model/ipane-primitive';
@@ -113,8 +114,21 @@ export class PaneApi<HorzScaleItem> implements IPaneApi<HorzScaleItem> {
 	}
 
 	public setVisible(visible: boolean): void {
+		if (visible === this._pane.visible()) {
+			return;
+		}
+		const model = this._chartWidget.model();
+		if (!visible && model.isLastVisiblePane(this._pane)) {
+			warn('The last visible pane cannot be hidden.');
+			return;
+		}
+		if (!visible && model.crosshairSource().pane() === this._pane) {
+			// Hiding the row fires no mouseleave, so do its cleanup here.
+			model.setHoveredSource(null);
+			model.clearCurrentPosition();
+		}
 		this._pane.setVisible(visible);
-		this._chartWidget.model().fullUpdate();
+		model.fullUpdate();
 	}
 
 	public visible(): boolean {
