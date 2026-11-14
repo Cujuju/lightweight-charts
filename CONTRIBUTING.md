@@ -1,3 +1,18 @@
+<!-- fork:start (Cujuju/lightweight-charts). Upstream's guide follows unchanged below fork:end. -->
+
+> **About this fork.** This is a fork of [tradingview/lightweight-charts](https://github.com/tradingview/lightweight-charts),
+> used to prepare changes for upstream PRs. Its two changes so far, pane visibility (`IPaneApi.setVisible`,
+> tradingview/lightweight-charts#2198) and giving the last pane the exact remaining height
+> (tradingview/lightweight-charts#2184), are merged upstream. It is not an official TradingView release.
+>
+> - Changes that aren't specific to this fork belong upstream. Follow the guide below and open them at
+>   [tradingview/lightweight-charts](https://github.com/tradingview/lightweight-charts).
+> - PRs here target `master`. The maintainer picks the merge method.
+> - Upstream syncs come in as PRs that merge upstream `master`. They must be merged with a merge commit,
+>   never squashed or rebased, so later syncs stay clean.
+
+<!-- fork:end -->
+
 # Contributing to Lightweight Charts™
 
 ## Issues
