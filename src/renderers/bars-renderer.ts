@@ -4,6 +4,7 @@ import { ensureNotNull } from '../helpers/assertions';
 
 import { BarCoordinates, BarPrices } from '../model/bar';
 import { BarColorerStyle } from '../model/series-bar-colorer';
+import { SlotLayout } from '../model/slot-layout';
 import { SeriesItemsIndexesRange, TimedValue } from '../model/time-data';
 
 import { BitmapCoordinatesPaneRenderer } from './bitmap-coordinates-pane-renderer';
@@ -17,6 +18,8 @@ export interface BarItem extends BarCandlestickItemBase, BarColorerStyle {
 export interface PaneRendererBarsData {
 	bars: readonly BarItem[];
 	barSpacing: number;
+	/** Relative slot widths, or `null` when every bar uses `barSpacing`. */
+	slots: SlotLayout | null;
 	openVisible: boolean;
 	thinBars: boolean;
 
@@ -27,37 +30,26 @@ export class PaneRendererBars extends BitmapCoordinatesPaneRenderer {
 	private _data: PaneRendererBarsData | null = null;
 	private _barWidth: number = 0;
 	private _barLineWidth: number = 0;
+	private _drawOpenClose: boolean = false;
 
 	public setData(data: PaneRendererBarsData): void {
 		this._data = data;
 	}
 
-	// eslint-disable-next-line complexity
 	protected override _drawImpl({ context: ctx, horizontalPixelRatio, verticalPixelRatio }: BitmapCoordinatesRenderingScope): void {
 		if (this._data === null || this._data.bars.length === 0 || this._data.visibleRange === null) {
 			return;
 		}
 
-		this._barWidth = this._calcBarWidth(horizontalPixelRatio);
-
-		// grid and crosshair have line width = Math.floor(pixelRatio)
-		// if this value is odd, we have to make bars' width odd
-		// if this value is even, we have to make bars' width even
-		// in order of keeping crosshair-over-bar drawing symmetric
-		if (this._barWidth >= 2) {
-			const lineWidth = Math.max(1, Math.floor(horizontalPixelRatio));
-			if ((lineWidth % 2) !== (this._barWidth % 2)) {
-				this._barWidth--;
-			}
-		}
-
-		// if scale is compressed, bar could become less than 1 CSS pixel
-		this._barLineWidth = this._data.thinBars ? Math.min(this._barWidth, Math.floor(horizontalPixelRatio)) : this._barWidth;
+		const slots = this._data.slots;
+		this._updateBarMetrics(this._data.barSpacing, horizontalPixelRatio);
 		let prevColor: string | null = null;
 
-		const drawOpenClose = this._barLineWidth <= this._barWidth && this._data.barSpacing >= Math.floor(1.5 * horizontalPixelRatio);
 		for (let i = this._data.visibleRange.from; i < this._data.visibleRange.to; ++i) {
 			const bar = this._data.bars[i];
+			if (slots !== null) {
+				this._updateBarMetrics(this._data.barSpacing * slots.width(bar.time), horizontalPixelRatio);
+			}
 			if (prevColor !== bar.barColor) {
 				ctx.fillStyle = bar.barColor;
 				prevColor = bar.barColor;
@@ -88,7 +80,7 @@ export class PaneRendererBars extends BitmapCoordinatesPaneRenderer {
 
 			const sideWidth = Math.ceil(this._barWidth * 1.5);
 
-			if (drawOpenClose) {
+			if (this._drawOpenClose) {
 				if (this._data.openVisible) {
 					const openLeft = bodyCenter - sideWidth;
 					let openTop = Math.max(bodyTop, Math.round(bar.openY * verticalPixelRatio) - bodyWidthHalf);
@@ -123,8 +115,22 @@ export class PaneRendererBars extends BitmapCoordinatesPaneRenderer {
 		}
 	}
 
-	private _calcBarWidth(pixelRatio: number): number {
-		const limit = Math.floor(pixelRatio);
-		return Math.max(limit, Math.floor(optimalBarWidth(ensureNotNull(this._data).barSpacing, pixelRatio)));
+	private _updateBarMetrics(barSpacing: number, horizontalPixelRatio: number): void {
+		this._barWidth = Math.max(Math.floor(horizontalPixelRatio), Math.floor(optimalBarWidth(barSpacing, horizontalPixelRatio)));
+
+		// grid and crosshair have line width = Math.floor(pixelRatio)
+		// if this value is odd, we have to make bars' width odd
+		// if this value is even, we have to make bars' width even
+		// in order of keeping crosshair-over-bar drawing symmetric
+		if (this._barWidth >= 2) {
+			const lineWidth = Math.max(1, Math.floor(horizontalPixelRatio));
+			if ((lineWidth % 2) !== (this._barWidth % 2)) {
+				this._barWidth--;
+			}
+		}
+
+		// if scale is compressed, bar could become less than 1 CSS pixel
+		this._barLineWidth = ensureNotNull(this._data).thinBars ? Math.min(this._barWidth, Math.floor(horizontalPixelRatio)) : this._barWidth;
+		this._drawOpenClose = this._barLineWidth <= this._barWidth && barSpacing >= Math.floor(1.5 * horizontalPixelRatio);
 	}
 }

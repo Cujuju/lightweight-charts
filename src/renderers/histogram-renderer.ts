@@ -1,6 +1,7 @@
 import { BitmapCoordinatesRenderingScope } from 'fancy-canvas';
 
 import { PricedValue } from '../model/price-scale';
+import { SlotLayout } from '../model/slot-layout';
 import { SeriesItemsIndexesRange, TimedValue, TimePointIndex } from '../model/time-data';
 
 import { BitmapCoordinatesPaneRenderer } from './bitmap-coordinates-pane-renderer';
@@ -16,6 +17,8 @@ export interface PaneRendererHistogramData {
 	items: HistogramItem[];
 
 	barSpacing: number;
+	/** Relative slot widths, or `null` when every bar uses `barSpacing`. */
+	slots: SlotLayout | null;
 	histogramBase: number;
 
 	visibleRange: SeriesItemsIndexesRange | null;
@@ -78,13 +81,18 @@ export class PaneRendererHistogram extends BitmapCoordinatesPaneRenderer {
 			this._precalculatedCache = [];
 			return;
 		}
-		const spacing = Math.ceil(this._data.barSpacing * pixelRatio) <= showSpacingMinimalBarWidth ? 0 : Math.max(1, Math.floor(pixelRatio));
-		const columnWidth = Math.round(this._data.barSpacing * pixelRatio) - spacing;
+		const barSpacing = this._data.barSpacing;
+		const slots = this._data.slots;
+		const items = this._data.items;
+		const spacing = gapWidth(barSpacing, pixelRatio);
+		const gapAt = (index: number): number => slots === null ? spacing : gapWidth(barSpacing * slots.width(items[index].time), pixelRatio);
 
 		this._precalculatedCache = new Array(this._data.visibleRange.to - this._data.visibleRange.from);
 
 		for (let i = this._data.visibleRange.from; i < this._data.visibleRange.to; i++) {
-			const item = this._data.items[i];
+			const item = items[i];
+			const itemSpacing = slots === null ? barSpacing : barSpacing * slots.width(item.time);
+			const columnWidth = Math.round(itemSpacing * pixelRatio) - gapAt(i);
 			// force cast to avoid ensureDefined call
 			const x = Math.round(item.x * pixelRatio);
 			let left: number;
@@ -116,16 +124,25 @@ export class PaneRendererHistogram extends BitmapCoordinatesPaneRenderer {
 			if (current.time !== prev.time + 1) {
 				continue;
 			}
-			if (current.left - prev.right !== (spacing + 1)) {
+			const gap = gapAt(i);
+			if (current.left - prev.right !== (gap + 1)) {
 				// have to align
 				if (prev.roundedCenter > prev.center) {
 					// prev wasshifted to left, so add pixel to right
-					prev.right = current.left - spacing - 1;
+					prev.right = current.left - gap - 1;
 				} else {
 					// extend current to left
-					current.left = prev.right + spacing + 1;
+					current.left = prev.right + gap + 1;
 				}
 			}
+		}
+
+		if (slots !== null) {
+			// equalizing narrow columns below would erase the slot widths; only keep columns non-empty
+			for (const current of this._precalculatedCache) {
+				current.right = Math.max(current.right, current.left);
+			}
+			return;
 		}
 
 		let minWidth = Math.ceil(this._data.barSpacing * pixelRatio);
@@ -153,4 +170,8 @@ export class PaneRendererHistogram extends BitmapCoordinatesPaneRenderer {
 			}
 		}
 	}
+}
+
+function gapWidth(barSpacing: number, pixelRatio: number): number {
+	return Math.ceil(barSpacing * pixelRatio) <= showSpacingMinimalBarWidth ? 0 : Math.max(1, Math.floor(pixelRatio));
 }

@@ -25,6 +25,7 @@ export class SeriesBarsPaneView extends BarsPaneViewBase<'Bar', BarItem, PaneRen
 		this._renderer.setData({
 			bars: this._items,
 			barSpacing: this._model.timeScale().barSpacing(),
+			slots: this._model.timeScale().slotLayout(),
 			openVisible: barStyleProps.openVisible,
 			thinBars: barStyleProps.thinBars,
 			visibleRange: this._itemsVisibleRange,

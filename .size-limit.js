@@ -119,7 +119,7 @@ export default [
 		path: 'dist/lightweight-charts.production.mjs',
 		import: '{ CandlestickSeries }',
 		ignore: ['fancy-canvas'],
-		limit: '3.00 KB',
+		limit: '3.25 KB',
 		brotli: true,
 	},
 	{

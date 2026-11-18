@@ -29,7 +29,8 @@ export class SeriesHistogramPaneView extends LinePaneViewBase<'Histogram', Histo
 			(item: HistogramItem, out: [Coordinate, Coordinate]) => {
 				out[0] = item.y;
 				out[1] = histogramBase;
-			}
+			},
+			this._model.timeScale().slotLayout()
 		);
 	}
 
@@ -44,6 +45,7 @@ export class SeriesHistogramPaneView extends LinePaneViewBase<'Histogram', Histo
 		const data: PaneRendererHistogramData = {
 			items: this._items,
 			barSpacing: this._model.timeScale().barSpacing(),
+			slots: this._model.timeScale().slotLayout(),
 			visibleRange: this._itemsVisibleRange,
 			histogramBase: this._series.priceScale().priceToCoordinate(this._series.options().base, ensureNotNull(this._series.firstValue()).value),
 		};
