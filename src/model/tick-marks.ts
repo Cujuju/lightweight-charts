@@ -2,6 +2,7 @@ import { lowerBound } from '../helpers/algorithms';
 import { ensureDefined } from '../helpers/assertions';
 
 import { InternalHorzScaleItem } from './ihorz-scale-behavior';
+import { SlotLayout } from './slot-layout';
 import { TickMarkWeightValue, TimePointIndex, TimeScalePoint } from './time-data';
 
 /**
@@ -22,6 +23,7 @@ interface MarksCache {
 	maxIndexesPerMark: number;
 	indicesWithDataId: number;
 	checkIndicesForData: boolean;
+	slotsRevision: number | null;
 	marks: readonly TickMark[];
 }
 
@@ -57,18 +59,21 @@ export class TickMarks<HorzScaleItem> {
 		}
 	}
 
-	public build(spacing: number, maxWidth: number, checkIndicesForData: boolean, indicesWithDataMap: Map<TimePointIndex, boolean>, indicesWithDataId: number): readonly TickMark[] {
+	public build(spacing: number, maxWidth: number, checkIndicesForData: boolean, indicesWithDataMap: Map<TimePointIndex, boolean>, indicesWithDataId: number, slots: SlotLayout | null = null): readonly TickMark[] {
 		const maxIndexesPerMark = Math.ceil(maxWidth / spacing);
+		const slotsRevision = slots === null ? null : slots.revision();
 		if (
 			this._cache === null ||
 			this._cache.maxIndexesPerMark !== maxIndexesPerMark ||
 			indicesWithDataId !== this._cache.indicesWithDataId ||
-			checkIndicesForData !== this._cache.checkIndicesForData
+			checkIndicesForData !== this._cache.checkIndicesForData ||
+			slotsRevision !== this._cache.slotsRevision
 		) {
 			this._cache = {
 				indicesWithDataId,
 				checkIndicesForData,
-				marks: this._buildMarksImpl(maxIndexesPerMark, checkIndicesForData, indicesWithDataMap),
+				slotsRevision,
+				marks: this._buildMarksImpl(maxIndexesPerMark, checkIndicesForData, indicesWithDataMap, slots),
 				maxIndexesPerMark,
 			};
 		}
@@ -100,10 +105,12 @@ export class TickMarks<HorzScaleItem> {
 		}
 	}
 
-	private _buildMarksImpl(maxIndexesPerMark: number, checkIndicesForData: boolean, indicesWithDataMap: Map<TimePointIndex, boolean>): readonly TickMark[] {
+	private _buildMarksImpl(maxIndexesPerMark: number, checkIndicesForData: boolean, indicesWithDataMap: Map<TimePointIndex, boolean>, slots: SlotLayout | null): readonly TickMark[] {
 		let marks: TickMark[] = [];
 
 		const canBeIncluded = (mark: TickMark): boolean => !checkIndicesForData || indicesWithDataMap.has(mark.index);
+		// distances are measured in default-width slots, so labels keep their pixel spacing with slot widths
+		const position = (index: number): number => slots === null ? index : slots.center(index);
 
 		for (const weight of Array.from(this._marksByWeight.keys()).sort((a: number, b: number) => b - a)) {
 			if (!this._marksByWeight.get(weight)) {
@@ -123,13 +130,13 @@ export class TickMarks<HorzScaleItem> {
 			let leftIndex = -Infinity;
 			for (let i = 0; i < currentWeightLength; i++) {
 				const mark = currentWeight[i];
-				const currentIndex = mark.index;
+				const currentIndex = position(mark.index);
 
 				// Determine indexes with which current index will be compared
 				// All marks to the right is moved to new array
 				while (prevMarksPointer < prevMarksLength) {
 					const lastMark = prevMarks[prevMarksPointer];
-					const lastIndex = lastMark.index;
+					const lastIndex = position(lastMark.index);
 					if (lastIndex < currentIndex && canBeIncluded(lastMark)) {
 						prevMarksPointer++;
 						marks.push(lastMark);

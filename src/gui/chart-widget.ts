@@ -696,7 +696,7 @@ export class ChartWidget<HorzScaleItem> implements IDestroyable, IChartWidgetBas
 				break;
 			case TimeScaleInvalidationType.Animation:
 				// apply the frame even if the animation has just finished, otherwise the view stops short of the target
-				timeScale.setRightOffset(invalidation.value.getPosition(time));
+				timeScale.setSlotRightOffset(invalidation.value.getPosition(time));
 				break;
 		}
 	}

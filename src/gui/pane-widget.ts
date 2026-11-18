@@ -759,7 +759,7 @@ export class PaneWidget implements IDestroyable, MouseEventHandlers {
 			const startAnimationTime = performance.now();
 			const timeScale = model.timeScale();
 
-			this._scrollXAnimation.start(timeScale.rightOffset() as Coordinate, startAnimationTime);
+			this._scrollXAnimation.start(timeScale.slotRightOffset() as Coordinate, startAnimationTime);
 
 			if (!this._scrollXAnimation.finished(startAnimationTime)) {
 				model.setTimeScaleAnimation(this._scrollXAnimation);

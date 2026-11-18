@@ -980,8 +980,7 @@ export class ChartModel<HorzScaleItem> implements IDestroyable, IChartModelBase 
 				// then shift everything that holds an absolute right offset (the time scale, its scroll gesture snapshot and a running animation)
 				const delta = newBaseIndex - currentBaseIndex;
 				this._timeScale.setBaseIndex(newBaseIndex);
-				this._timeScale.shiftRightOffset(delta);
-				this._shiftTimeScaleAnimation(delta);
+				this._shiftTimeScaleAnimation(this._timeScale.shiftRightOffset(delta));
 				return;
 			}
 		}
