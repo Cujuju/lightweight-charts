@@ -149,7 +149,8 @@ export class SeriesCustomPaneView extends SeriesPaneViewBase<
 
 				out[0] = top as Coordinate;
 				out[1] = bottom as Coordinate;
-			}
+			},
+			this._model.timeScale().slotLayout()
 		);
 
 		return fallbackHit === null ? null : {
@@ -184,9 +185,10 @@ export class SeriesCustomPaneView extends SeriesPaneViewBase<
 	}
 
 	protected _prepareRendererData(): void {
+		const timeScale = this._model.timeScale();
 		this._paneView.update(
 			{
-				bars: this._items.map(unwrapItemData),
+				bars: this._items.map((item: CustomBarItem) => unwrapItemData(item, timeScale)),
 				barSpacing: this._model.timeScale().barSpacing(),
 				visibleRange: this._itemsVisibleRange,
 				conflationFactor: this._model.timeScale().conflationFactor(),
@@ -206,10 +208,12 @@ export class SeriesCustomPaneView extends SeriesPaneViewBase<
 }
 
 function unwrapItemData(
-	item: CustomBarItem
+	item: CustomBarItem,
+	timeScale: ITimeScale
 ): CustomBarItemData<unknown> {
 	return {
 		x: item.x,
+		slotWidth: timeScale.slotWidth(item.time),
 		time: item.time,
 		originalData: item.originalData as unknown as CustomData<unknown>,
 		barColor: item.barColor,

@@ -26,6 +26,7 @@ type TestBar = CustomBarItemData<Time, TestData>;
 function makeBars(count: number): TestBar[] {
 	return Array.from({ length: count }, (_: unknown, i: number) => ({
 		x: i * 10,
+		slotWidth: 10,
 		time: i,
 		barColor: '#000000',
 		originalData: { time: i as unknown as Time, value: i },
