@@ -9,6 +9,7 @@ const sidebars = {
 		'chart-types',
 		'price-scale',
 		'time-scale',
+		'slot-widths',
 		'panes',
 		'time-zones',
 		{
