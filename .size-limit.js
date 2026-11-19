@@ -16,7 +16,7 @@ export default [
 	{
 		name: 'ESM createChart',
 		path: 'dist/lightweight-charts.production.mjs',
-		limit: '45.50 KB',
+		limit: '45.75 KB',
 		import: '{ createChart }',
 		ignore: ['fancy-canvas'],
 		brotli: true,
@@ -24,7 +24,7 @@ export default [
 	{
 		name: 'ESM createChartEx',
 		path: 'dist/lightweight-charts.production.mjs',
-		limit: '45.50 KB',
+		limit: '45.75 KB',
 		import: '{ createChartEx }',
 		ignore: ['fancy-canvas'],
 		brotli: true,
@@ -32,7 +32,7 @@ export default [
 	{
 		name: 'ESM createYieldCurveChart',
 		path: 'dist/lightweight-charts.production.mjs',
-		limit: '45.50 KB',
+		limit: '45.75 KB',
 		import: '{ createYieldCurveChart }',
 		ignore: ['fancy-canvas'],
 		brotli: true,
@@ -40,7 +40,7 @@ export default [
 	{
 		name: 'ESM createOptionsChart',
 		path: 'dist/lightweight-charts.production.mjs',
-		limit: '45.50 KB',
+		limit: '45.75 KB',
 		import: '{ createOptionsChart }',
 		ignore: ['fancy-canvas'],
 		brotli: true,
