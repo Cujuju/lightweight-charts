@@ -79,7 +79,7 @@ function animatedModel(): { model: ChartModel<Time>; animations: ITimeScaleAnima
 }
 
 function applyFrame(ts: TimeScale<Time>, animation: ITimeScaleAnimation, time: number): void {
-	ts.setSlotRightOffset(animation.getPosition(time));
+	ts.setAnimatedRightOffset(animation.getPosition(time));
 }
 
 // a chart model with a sized time scale, for flows that go through updateTimeScale()
@@ -986,6 +986,80 @@ describe('TimeScale slot widths', () => {
 		ts.setRightOffset(-5);
 		model.updateTimeScale(barCount - 1 as TimePointIndex, points(range(barCount, 1000)), 0);
 		expect(ts.rightOffset()).to.be.closeTo(-5, precision);
+	});
+
+	it('keeps following when whitespace after a wide, partly clipped last bar is filled', () => {
+		const ts = createTimeScale({}, range(21));
+		ts.setBaseIndex(19 as TimePointIndex);
+		ts.setSlotWidths([{ time: internalTime(19), width: 10 }]);
+		ts.setRightOffset(-0.3);
+		// the data layer moves the base index without changing the points
+		ts.setBaseIndex(20 as TimePointIndex);
+		expect(ts.rightOffset()).to.be.closeTo(-0.3, precision);
+	});
+
+	it('keeps the kinetic sample when a data replace during a drag clamps the offset', () => {
+		const model = chartModel({ fixLeftEdge: true, barSpacing: 6 });
+		const ts = model.timeScale();
+		model.updateTimeScale(barCount - 1 as TimePointIndex, points(range(barCount)), 0);
+		ts.setRightOffset(-50);
+		ts.startScroll(400 as Coordinate);
+		const kineticBefore = ts.kineticScrollPosition();
+
+		const replacement = range(barCount, 1000);
+		ts.updateSlotWidths(replacement.map((time: number) => ({ time: internalTime(time), width: 0.5 })));
+		model.updateTimeScale(barCount - 1 as TimePointIndex, points(replacement), 0);
+		expect(ts.slotRightOffset()).to.be.greaterThan(0);
+		expect(ts.kineticScrollPosition()).to.be.closeTo(kineticBefore, precision);
+		ts.endScroll();
+	});
+
+	it('counts an animated scroll past the last bar on an empty chart in bars', (t: TestContext) => {
+		const start = 1000;
+		const duration = 1000;
+		t.mock.method(performance, 'now', () => start);
+		const { model, animations } = animatedModel();
+		const ts = createTimeScale({}, [], model);
+		ts.setBaseIndex(null);
+		ts.setSlotWidths([{ time: internalTime(20), width: 4 }]);
+		ts.scrollToOffsetAnimated(1, duration);
+		applyFrame(ts, animations[0], start + duration);
+
+		ts.update(points(range(21)), 0);
+		ts.setBaseIndex(19 as TimePointIndex);
+		expect(ts.rightOffset()).to.be.closeTo(1, precision);
+	});
+
+	it('moves a scrolled-back view by one bar when a wide point is inserted left of it, as without widths', () => {
+		const model = chartModel({ barSpacing: 10 }, 100);
+		const ts = model.timeScale();
+		model.updateTimeScale(119 as TimePointIndex, points(range(120)), 0);
+		ts.setRightOffset(-20);
+		ts.setSlotWidths([{ time: internalTime(45.5), width: 20 }]);
+		const before = ts.indexToCoordinate(99 as TimePointIndex);
+
+		const withInsert = [...range(46), 45.5, ...range(74, 46)];
+		model.updateTimeScale(120 as TimePointIndex, points(withInsert), 46);
+		// time 99 is at index 100 now
+		expect(ts.indexToCoordinate(100 as TimePointIndex) - before).to.be.closeTo(10, precision);
+	});
+
+	it('survives a range listener that clears the widths during a data update', () => {
+		const model = chartModel({ barSpacing: 10 }, 100);
+		const ts = model.timeScale();
+		model.updateTimeScale(29 as TimePointIndex, points(range(30)), 0);
+		ts.visibleStrictRange();
+		let cleared = false;
+		ts.logicalRangeChanged().subscribe(() => {
+			if (!cleared) {
+				cleared = true;
+				ts.setSlotWidths([]);
+			}
+		});
+		ts.setSlotWidths([{ time: internalTime(25), width: 10 }]);
+		expect(() => model.updateTimeScale(30 as TimePointIndex, points(range(31)), 30)).not.to.throw();
+		expect(cleared).to.be.equal(true);
+		expect(ts.slotWidth(25 as TimePointIndex)).to.be.equal(ts.barSpacing());
 	});
 
 	it('keeps a logical range set on an empty chart over the right offset option', () => {
