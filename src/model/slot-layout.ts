@@ -143,7 +143,8 @@ export class SlotLayout {
 		}
 		const capacity = Math.max(count, this._widths.length * capacityGrowthFactor);
 		const widths = new Float64Array(capacity);
-		widths.set(this._widths.subarray(0, keep));
+		// keep every old width: update() still reads the ones it is about to rewrite
+		widths.set(this._widths.subarray(0, this._count));
 		const starts = new Float64Array(capacity + 1);
 		starts.set(this._starts.subarray(0, keep + 1));
 		this._widths = widths;
