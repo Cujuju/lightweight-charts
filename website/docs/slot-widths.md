@@ -19,8 +19,9 @@ Use [`ITimeScaleApi.setSlotWidths`](/api/interfaces/ITimeScaleApi.md#setslotwidt
 and [`ITimeScaleApi.updateSlotWidths`](/api/interfaces/ITimeScaleApi.md#updateslotwidths) to change only some of them:
 
 ```javascript
-const averageVolume = bars.reduce((sum, bar) => sum + bar.volume, 0) / bars.length;
-const widthFor = bar => Math.sqrt(bar.volume / averageVolume);
+const averageVolume = bars.reduce((sum, bar) => sum + bar.volume, 0) / bars.length || 1;
+const minWidth = 0.1;
+const widthFor = bar => Math.max(minWidth, Math.sqrt(bar.volume / averageVolume));
 
 series.setData(bars);
 chart.timeScale().setSlotWidths(bars.map(bar => ({ time: bar.time, width: widthFor(bar) })));

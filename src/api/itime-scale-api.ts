@@ -166,7 +166,12 @@ export interface ITimeScaleApi<HorzScaleItem> {
 	 *
 	 * @example
 	 * ```js
-	 * chart.timeScale().setSlotWidths(bars.map(bar => ({ time: bar.time, width: bar.volume / averageVolume })));
+	 * const averageVolume = bars.reduce((sum, bar) => sum + bar.volume, 0) / bars.length || 1;
+	 * const minWidth = 0.1;
+	 * chart.timeScale().setSlotWidths(bars.map(bar => ({
+	 *     time: bar.time,
+	 *     width: Math.max(minWidth, bar.volume / averageVolume),
+	 * })));
 	 * ```
 	 */
 	setSlotWidths(widths: readonly SlotWidth<HorzScaleItem>[]): void;

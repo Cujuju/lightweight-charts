@@ -1,7 +1,9 @@
 /* eslint-disable @typescript-eslint/no-floating-promises */
 import { expect } from 'chai';
 import { CanvasRenderingTarget2D, size } from 'fancy-canvas';
+import { readFileSync } from 'node:fs';
 import { describe, it, TestContext } from 'node:test';
+import { runInNewContext } from 'node:vm';
 
 import { chartOptionsDefaults } from '../../src/api/options/chart-options-defaults';
 import { seriesOptionsDefaults } from '../../src/api/options/series-options-defaults';
@@ -22,7 +24,7 @@ import { Series } from '../../src/model/series';
 import { LinePlotRow } from '../../src/model/series-data';
 import { SeriesLinePaneView } from '../../src/model/series/line-pane-view';
 import { lineStyleDefaults } from '../../src/model/series/line-series';
-import { maxSlotWidth, minSlotWidth, SlotLayout } from '../../src/model/slot-layout';
+import { maxSlotWidth, minSlotWidth, normalizeSlotWidth, SlotLayout } from '../../src/model/slot-layout';
 import { TickMarks } from '../../src/model/tick-marks';
 import { Logical, TickMarkWeightValue, TimePointIndex, TimeScalePoint } from '../../src/model/time-data';
 import { HorzScaleOptions, InternalSlotWidth, TimeScale } from '../../src/model/time-scale';
@@ -656,6 +658,74 @@ describe('TimeScale slot widths', () => {
 		}
 	});
 
+	it('clamps the retained margin after applying pending spacing', () => {
+		const model = modelMock();
+		model.setRightOffset = () => {};
+		const margin = 400;
+		const ts = createTimeScale({ rightOffsetPixels: margin }, range(barCount), model);
+		model.setBarSpacing = ts.setBarSpacing.bind(ts);
+		ts.setSlotWidths(range(2, barCount - 2).map((time: number) => ({ time: internalTime(time), width: maxSlotWidth })));
+		ts.restoreDefault();
+
+		ts.setWidth(0);
+		ts.applyOptions({ barSpacing: 2 });
+		ts.setWidth(550);
+
+		expect(marginAtBase(ts)).to.be.closeTo(margin, precision);
+	});
+
+	it('leaves room for the fitted data at the final spacing even if slot widths clear', () => {
+		const model = modelMock();
+		model.setRightOffset = () => {};
+		const width = 80;
+		const timestamps = range(10);
+		const relativeWidth = 2;
+		const options = { rightOffsetPixels: width };
+		const widths = timestamps.map((time: number) => ({ time: internalTime(time), width: relativeWidth }));
+		const ts = createTimeScale(options, timestamps, model);
+		ts.setWidth(width);
+		ts.setSlotWidths(widths);
+		ts.fitContent();
+
+		const dataWidth = timestamps.length * relativeWidth * timeScaleOptionsDefaults.minBarSpacing;
+		expect(ts.visibleStrictRange()?.left()).to.equal(0);
+		expect(marginAtBase(ts)).to.be.closeTo(width - dataWidth, precision);
+
+		const cleared = createTimeScale({ ...options, minBarSpacing: 0 }, timestamps, model);
+		cleared.setSlotWidths(widths);
+		cleared.setWidth(0);
+		cleared.fitContent();
+		cleared.setSlotWidths([]);
+		cleared.setWidth(width);
+
+		expect(cleared.barSpacing()).to.be.greaterThan(0);
+		expect(cleared.visibleStrictRange()?.left()).to.equal(0);
+	});
+
+	it('uses valid slot widths in the guide and API examples for zero-volume bars', () => {
+		const guide = readFileSync(new URL('../../website/docs/slot-widths.md', import.meta.url), 'utf8');
+		const api = readFileSync(new URL('../../src/api/itime-scale-api.ts', import.meta.url), 'utf8');
+		const guideExample = guide.match(/```javascript\r?\n([\s\S]*?)```/)?.[1];
+		const apiExample = api.slice(api.indexOf('Replaces the relative slot widths')).match(/```js\r?\n([\s\S]*?)```/)?.[1]
+			.replace(/^\s*\* ?/gm, '');
+		expect(guideExample).to.be.a('string');
+		expect(apiExample).to.be.a('string');
+
+		const checkWidths = (widths: { width: number }[]) => {
+			for (const { width } of widths) {
+				normalizeSlotWidth(width);
+			}
+		};
+		const chart = { timeScale: () => ({ setSlotWidths: checkWidths, updateSlotWidths: checkWidths }) };
+		const series = { setData: () => {}, update: () => {} };
+		for (const volume of [100, 0]) {
+			const bars = [{ time: 0, volume: 0 }, { time: 1, volume }];
+			const context = { bars, averageVolume: volume / bars.length, lastBar: bars[0], chart, series };
+			runInNewContext(guideExample ?? '', { ...context });
+			runInNewContext(apiExample ?? '', { ...context });
+		}
+	});
+
 	it('fits the revealed pane when slots are first registered while hidden', () => {
 		const timestamps = range(100);
 		const ts = createTimeScale({}, timestamps);
@@ -948,7 +1018,7 @@ describe('TimeScale slot widths', () => {
 			ts.setBaseIndex(barCount - 1 as TimePointIndex);
 		}
 		expect(ts[pendingField]).to.equal(pending);
-		expect(pending).to.deep.equal({ range: 'fit' });
+		expect(pending).to.deep.equal({ range: 'slot-fit' });
 
 		ts.setWidth(paneWidth);
 		expect(ts.visibleLogicalRange()?.left()).to.be.closeTo(0, precision);
