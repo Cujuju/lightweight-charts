@@ -59,7 +59,19 @@ export class PaneRendererCandlesticks extends BitmapCoordinatesPaneRenderer {
 			this._drawBorder(renderingScope, bars, this._data.visibleRange);
 		}
 
-		this._drawCandles(renderingScope, bars, this._data.visibleRange);
+		// with uniform widths the border either covers every body or none
+		const bodiesCovered = this._data.slots === null
+			&& this._data.borderVisible
+			&& this._barWidth <= this._calculateBorderWidth(horizontalPixelRatio, this._barWidth) * 2;
+		if (!bodiesCovered) {
+			this._drawCandles(renderingScope, bars, this._data.visibleRange);
+		}
+	}
+
+	private _borderWidthAt(barWidth: number, uniformBorderWidth: number, horizontalPixelRatio: number): number {
+		return (this._data as PaneRendererCandlesticksData).slots === null
+			? uniformBorderWidth
+			: this._calculateBorderWidth(horizontalPixelRatio, barWidth);
 	}
 
 	private _barSpacingAt(bar: CandlestickItem): number {
@@ -141,13 +153,14 @@ export class PaneRendererCandlesticks extends BitmapCoordinatesPaneRenderer {
 		const { context: ctx, horizontalPixelRatio, verticalPixelRatio } = renderingScope;
 
 		let prevBorderColor: string | undefined = '';
+		const uniformBorderWidth = this._calculateBorderWidth(horizontalPixelRatio, this._barWidth);
 
 		let prevEdge: number | null = null;
 
 		for (let i = visibleRange.from; i < visibleRange.to; i++) {
 			const bar = bars[i];
 			const barWidth = this._barWidthAt(bar, horizontalPixelRatio);
-			const borderWidth = this._calculateBorderWidth(horizontalPixelRatio, barWidth);
+			const borderWidth = this._borderWidthAt(barWidth, uniformBorderWidth, horizontalPixelRatio);
 			if (bar.barBorderColor !== prevBorderColor) {
 				ctx.fillStyle = bar.barBorderColor;
 				prevBorderColor = bar.barBorderColor;
@@ -182,11 +195,12 @@ export class PaneRendererCandlesticks extends BitmapCoordinatesPaneRenderer {
 		const { context: ctx, horizontalPixelRatio, verticalPixelRatio } = renderingScope;
 
 		let prevBarColor = '';
+		const uniformBorderWidth = this._calculateBorderWidth(horizontalPixelRatio, this._barWidth);
 
 		for (let i = visibleRange.from; i < visibleRange.to; i++) {
 			const bar = bars[i];
 			const barWidth = this._barWidthAt(bar, horizontalPixelRatio);
-			const borderWidth = this._calculateBorderWidth(horizontalPixelRatio, barWidth);
+			const borderWidth = this._borderWidthAt(barWidth, uniformBorderWidth, horizontalPixelRatio);
 			if (this._data.borderVisible && barWidth <= borderWidth * 2) {
 				// the border already covers the whole body
 				continue;
