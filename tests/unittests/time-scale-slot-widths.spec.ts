@@ -910,6 +910,62 @@ describe('TimeScale slot widths', () => {
 		expect(ts.rightOffset()).to.be.closeTo(-10, precision);
 	});
 
+	it('keeps an animated scroll on course when data arrives between frames', (t: TestContext) => {
+		const start = 1000;
+		const duration = 1000;
+		let now = start;
+		t.mock.method(performance, 'now', () => now);
+		const { model, animations } = animatedModel();
+		const ts = createTimeScale({}, [], model);
+		ts.setBaseIndex(null);
+		const timestamps = range(100);
+		ts.setSlotWidths(timestamps.map((time: number) => ({ time: internalTime(time), width: 2 })));
+		ts.setRightOffset(-20);
+		ts.scrollToOffsetAnimated(-10, duration);
+		applyFrame(ts, animations[0], start + 500);
+
+		now = start + 505;
+		ts.update(points(timestamps), 0);
+		ts.setBaseIndex(99 as TimePointIndex);
+		let previous = ts.rightOffset();
+		expect(previous).to.be.closeTo(-15, precision);
+		for (const time of [510, 750, 1000]) {
+			now = start + time;
+			applyFrame(ts, animations[0], now);
+			expect(ts.rightOffset()).to.be.at.least(previous - precision);
+			expect(ts.rightOffset()).to.be.at.most(-10 + precision);
+			previous = ts.rightOffset();
+		}
+		expect(previous).to.be.closeTo(-10, precision);
+	});
+
+	it('keeps a spacing change made on an empty chart in the scroll position', () => {
+		const model = chartModel({ rightOffsetPixels: 0, barSpacing: 6 });
+		const ts = model.timeScale();
+		ts.setSlotWidths([{ time: internalTime(19), width: 4 }]);
+		ts.setRightOffset(-6);
+		ts.setBarSpacing(12);
+		expect(ts.rightOffset()).to.be.closeTo(-3, precision);
+		model.updateTimeScale(19 as TimePointIndex, points(range(20)), 0);
+		expect(ts.rightOffset()).to.be.closeTo(-3, precision);
+	});
+
+	it('refreshes the conflation factor when the first sizing changes the fixed-edge spacing', (t: TestContext) => {
+		const globals = globalThis as { window?: unknown };
+		globals.window = { devicePixelRatio: 1 };
+		t.after(() => { delete globals.window; });
+		const options = chartOptionsDefaults<Time>();
+		options.timeScale = { ...options.timeScale, fixLeftEdge: true, fixRightEdge: true, enableConflation: true, minBarSpacing: 0.1, barSpacing: 0.5 };
+		const model = new ChartModel<Time>(() => {}, options, behavior);
+		const ts = model.timeScale();
+		const timestamps = range(barCount);
+		ts.setSlotWidths(timestamps.map((time: number) => ({ time: internalTime(time), width: minSlotWidth })));
+		model.updateTimeScale(barCount - 1 as TimePointIndex, points(timestamps), 0);
+		ts.setWidth(100);
+		expect(ts.barSpacing()).to.be.closeTo(5, precision);
+		expect(ts.conflationFactor()).to.be.equal(1);
+	});
+
 	it('keeps a logical range set on an empty chart over the right offset option', () => {
 		const model = chartModel({ rightOffset: -3 });
 		const ts = model.timeScale();

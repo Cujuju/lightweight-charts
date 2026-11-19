@@ -378,9 +378,9 @@ export class TimeScale<HorzScaleItem> implements ITimeScale {
 	private _baseEdgeBeforeUpdate: number | null = null;
 	// The right offset in bars before update() changed the points; null once the base index is set.
 	private _barOffsetBeforeUpdate: number | null = null;
-	// A right offset that counts bars while there is no base index, so no slots to convert it against yet.
-	// Without a base index that is any offset given in bars and any scrolled-back (negative) offset.
-	private _pendingBarOffset: number | null;
+	// Whether a right offset past the last bar, held while there is no base index, was given in bars.
+	// A scrolled-back (negative) offset always counts bars then. Converted to slots when a base index arrives.
+	private _emptyScaleOffsetInBars: boolean = true;
 
 	private readonly _horzScaleBehavior: IHorzScaleBehavior<HorzScaleItem>;
 
@@ -388,7 +388,6 @@ export class TimeScale<HorzScaleItem> implements ITimeScale {
 		this._options = options;
 		this._localizationOptions = localizationOptions;
 		this._rightOffset = options.rightOffset;
-		this._pendingBarOffset = options.rightOffset;
 		this._barSpacing = options.barSpacing;
 		this._model = model;
 		this._checkRightOffsetPixels(options);
@@ -583,7 +582,12 @@ export class TimeScale<HorzScaleItem> implements ITimeScale {
 		}
 
 		// updating bar spacing should be first because right offset depends on it
-		this._correctBarSpacing();
+		if (this._slots === null) {
+			this._correctBarSpacing();
+		} else {
+			// the fixed-edge minimum spacing depends on the slots, so the conflation factor follows it
+			this._setBarSpacing(this._barSpacing);
+		}
 		this._correctOffset();
 	}
 
@@ -641,13 +645,13 @@ export class TimeScale<HorzScaleItem> implements ITimeScale {
 	/** Sets the right offset in bars. */
 	public setRightOffset(offset: number): void {
 		this._applySlotRightOffset(this._slotOffsetForBars(offset));
-		this._pendingBarOffset = this._baseIndexOrNull === null ? offset : null;
+		this._emptyScaleOffsetInBars = true;
 	}
 
 	/** Sets the right offset in default-width slots, the unit kinetic and animated scrolling run in. */
 	public setSlotRightOffset(slotOffset: number): void {
 		this._applySlotRightOffset(slotOffset);
-		this._pendingBarOffset = this._emptyScaleBarOffset();
+		this._emptyScaleOffsetInBars = false;
 	}
 
 	/**
@@ -827,18 +831,23 @@ export class TimeScale<HorzScaleItem> implements ITimeScale {
 		this._baseEdgeBeforeUpdate = null;
 		const barOffsetBeforeUpdate = this._barOffsetBeforeUpdate;
 		this._barOffsetBeforeUpdate = null;
-		if (baseIndex === null && this._baseIndexOrNull !== null && this._rightOffset < 0) {
-			// A scrolled-back offset counts bars again once the slots under it are gone; a gap past the last bar stays as it is.
-			this._rightOffset = barOffsetBeforeUpdate ?? this.rightOffset();
+		const slotOffsetBefore = this._rightOffset;
+		const hadBaseIndex = this._baseIndexOrNull !== null;
+		if (baseIndex === null && hadBaseIndex) {
+			if (this._rightOffset < 0) {
+				// A scrolled-back offset counts bars again once the slots under it are gone.
+				this._rightOffset = barOffsetBeforeUpdate ?? this.rightOffset();
+			}
+			// A gap past the last bar stays as it is, in slots.
+			this._emptyScaleOffsetInBars = false;
 		}
 		this._baseIndexOrNull = baseIndex;
-		if (baseIndex === null) {
-			this._pendingBarOffset = this._emptyScaleBarOffset();
-		} else {
-			if (this._slots !== null && this._pendingBarOffset !== null) {
-				this._rightOffset = this._slotOffsetForBars(this._pendingBarOffset);
-			}
-			this._pendingBarOffset = null;
+		if (baseIndex !== null && !hadBaseIndex && this._slots !== null && (this._emptyScaleOffsetInBars || this._rightOffset < 0)) {
+			this._rightOffset = this._slotOffsetForBars(this._rightOffset);
+		}
+		if (this._rightOffset !== slotOffsetBefore) {
+			// the unit changed under a running animation
+			this._model.shiftTimeScaleAnimation(slotOffsetBefore - this._rightOffset);
 		}
 		if (this._slots !== null && this._width !== 0) {
 			// The fixed-edge minimum spacing depends on the slots of the new points; this also refreshes the conflation factor.
@@ -868,7 +877,6 @@ export class TimeScale<HorzScaleItem> implements ITimeScale {
 		const previousEdge = this._baseEdgeBeforeUpdate ?? slots.start(this.baseIndex() + 1);
 		this._baseEdgeBeforeUpdate = null;
 		this._barOffsetBeforeUpdate = null;
-		this._pendingBarOffset = null;
 		this._visibleRangeInvalidated = true;
 		this._baseIndexOrNull = baseIndex;
 		this._setBarSpacing(this._barSpacing);
@@ -1086,7 +1094,7 @@ export class TimeScale<HorzScaleItem> implements ITimeScale {
 				? pixelOffset / this.barSpacing()
 				: this._slotOffsetForBars(this._options.rightOffset);
 		}
-		this._pendingBarOffset = this._emptyScaleBarOffset();
+		this._emptyScaleOffsetInBars = pixelOffset === 0;
 		this._correctOffset();
 		this._visibleRangeInvalidated = true;
 		this._model.recalculateAllPanes();
@@ -1216,11 +1224,6 @@ export class TimeScale<HorzScaleItem> implements ITimeScale {
 		const minOffset = this._minRightOffset();
 		return minOffset !== null
 			&& this._rightOffset - minOffset <= pinnedLeftEdgeRelativeTolerance * Math.max(1, Math.abs(minOffset));
-	}
-
-	/** Without a base index a scrolled-back offset counts bars; with one, or past the last bar, nothing is pending. */
-	private _emptyScaleBarOffset(): number | null {
-		return this._baseIndexOrNull === null && this._rightOffset < 0 ? this._rightOffset : null;
 	}
 
 	private _applySlotRightOffset(slotOffset: number): void {
