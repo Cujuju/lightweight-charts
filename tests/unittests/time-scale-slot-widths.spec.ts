@@ -1062,6 +1062,125 @@ describe('TimeScale slot widths', () => {
 		expect(ts.slotWidth(25 as TimePointIndex)).to.be.equal(ts.barSpacing());
 	});
 
+	it('keeps the kinetic sample finite after an append on a chart fitted before its first sizing', () => {
+		const options = chartOptionsDefaults<Time>();
+		options.timeScale = { ...options.timeScale, rightOffsetPixels: 50 };
+		const model = new ChartModel<Time>(() => {}, options, behavior);
+		const ts = model.timeScale();
+		model.updateTimeScale(99 as TimePointIndex, points(range(100)), 0);
+		ts.fitContent();
+		model.updateTimeScale(100 as TimePointIndex, points(range(101)), 100);
+		ts.setWidth(paneWidth);
+		ts.fitContent();
+		expect(Number.isFinite(ts.kineticScrollPosition())).to.be.equal(true);
+	});
+
+	it('moves the view by one bar when a wide point is inserted left of it with the last bar in view', () => {
+		for (const offset of [0, 0.01, 2]) {
+			const model = chartModel({ barSpacing: 10, shiftVisibleRangeOnNewBar: false });
+			const ts = model.timeScale();
+			model.updateTimeScale(119 as TimePointIndex, points(range(120)), 0);
+			ts.setSlotWidths([{ time: internalTime(45.5), width: 20 }]);
+			ts.setRightOffset(offset);
+			const before = ts.indexToCoordinate(119 as TimePointIndex);
+
+			model.updateTimeScale(120 as TimePointIndex, points([...range(46), 45.5, ...range(74, 46)]), 46);
+			expect(ts.indexToCoordinate(120 as TimePointIndex) - before, `offset ${offset}`).to.be.closeTo(10, precision);
+		}
+	});
+
+	it('keeps the kinetic sample when a data replace during a drag only clamps the offset', () => {
+		const model = chartModel({ fixLeftEdge: true, barSpacing: 10 }, 100);
+		const ts = model.timeScale();
+		model.updateTimeScale(29 as TimePointIndex, points(range(30)), 0);
+		ts.setSlotWidths([{ time: internalTime(0), width: 10 }]);
+		ts.setRightOffset(-25);
+		ts.startScroll(50 as Coordinate);
+		const kineticBefore = ts.kineticScrollPosition();
+		const offsetBefore = ts.slotRightOffset();
+
+		model.updateTimeScale(29 as TimePointIndex, points(range(30, 1000)), 0);
+		expect(ts.slotRightOffset()).to.be.greaterThan(offsetBefore);
+		expect(ts.kineticScrollPosition()).to.be.closeTo(kineticBefore, precision);
+		ts.endScroll();
+	});
+
+	it('counts a nested width change from a range listener once in the kinetic sample', () => {
+		const model = chartModel({ barSpacing: 10 }, 100);
+		const ts = model.timeScale();
+		model.updateTimeScale(119 as TimePointIndex, points(range(120)), 0);
+		ts.setRightOffset(-20);
+		ts.visibleStrictRange();
+		ts.startScroll(50 as Coordinate);
+		const kineticBefore = ts.kineticScrollPosition();
+		let nested = false;
+		const recalculate = model.recalculateAllPanes.bind(model);
+		// stands in for a range listener, which runs while the panes update
+		model.recalculateAllPanes = () => {
+			recalculate();
+			if (!nested) {
+				nested = true;
+				ts.updateSlotWidths([{ time: internalTime(115), width: 11 }]);
+			}
+		};
+		ts.updateSlotWidths([{ time: internalTime(95), width: 5 }]);
+		expect(nested).to.be.equal(true);
+		expect(ts.rightOffset()).to.be.closeTo(-20, precision);
+		expect(ts.kineticScrollPosition()).to.be.closeTo(kineticBefore, precision);
+		ts.endScroll();
+	});
+
+	it('keeps the bar under the pointer when a range listener sets the first width during a zoom', () => {
+		const model = chartModel({ barSpacing: 10 }, 100);
+		const ts = model.timeScale();
+		model.updateTimeScale(119 as TimePointIndex, points(range(120)), 0);
+		ts.setRightOffset(-20);
+		ts.visibleStrictRange();
+		const before = ts.coordinateToIndex(50 as Coordinate);
+		let done = false;
+		const recalculate = model.recalculateAllPanes.bind(model);
+		// stands in for a range listener, which runs while the panes update
+		model.recalculateAllPanes = () => {
+			recalculate();
+			if (!done) {
+				done = true;
+				ts.setSlotWidths([{ time: internalTime(2), width: 3 }]);
+			}
+		};
+		ts.zoom(50 as Coordinate, 1);
+		expect(done).to.be.equal(true);
+		expect(Math.abs(ts.coordinateToIndex(50 as Coordinate) - before)).to.be.at.most(1);
+	});
+
+	it('counts an animated scroll in bars when the data is cleared before it ends', (t: TestContext) => {
+		const start = 1000;
+		const duration = 1000;
+		t.mock.method(performance, 'now', () => start);
+		const { model, animations } = animatedModel();
+		const ts = createTimeScale({}, range(21), model);
+		ts.setBaseIndex(19 as TimePointIndex);
+		ts.setSlotWidths([{ time: internalTime(20), width: 4 }]);
+		ts.scrollToOffsetAnimated(1, duration);
+		applyFrame(ts, animations[0], start + 500);
+
+		ts.update([], 0);
+		ts.setBaseIndex(null);
+		applyFrame(ts, animations[0], start + duration);
+		ts.update(points(range(21)), 0);
+		ts.setBaseIndex(19 as TimePointIndex);
+		expect(ts.rightOffset()).to.be.closeTo(1, precision);
+	});
+
+	it('keeps a pixel margin when data arrives before the first frame of an animated scroll', () => {
+		const model = chartModel({ barSpacing: 10, rightOffsetPixels: 20 });
+		const ts = model.timeScale();
+		ts.setSlotRightOffset(20 / ts.barSpacing());
+		ts.setSlotWidths([{ time: internalTime(20), width: 4 }]);
+		ts.scrollToOffsetAnimated(1, 1000);
+		model.updateTimeScale(19 as TimePointIndex, points(range(21)), 0);
+		expect(marginAtBase(ts)).to.be.closeTo(20, precision);
+	});
+
 	it('keeps a logical range set on an empty chart over the right offset option', () => {
 		const model = chartModel({ rightOffset: -3 });
 		const ts = model.timeScale();
