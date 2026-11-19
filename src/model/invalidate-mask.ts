@@ -59,10 +59,13 @@ export interface TimeScaleResetInvalidation {
 	type: TimeScaleInvalidationType.Reset;
 }
 
+/** A destination with no bar offset resolves in pixels, even in a uniform layout. */
+export type TimeScaleAnimationDestination = { bars: number; pixels?: number } | { bars?: undefined; pixels: number };
+
 export interface ITimeScaleAnimation {
 	getPosition(time: number): number;
 	finished(time: number): boolean;
-	readonly destination?: { bars: number; pixels?: number };
+	readonly destination?: TimeScaleAnimationDestination;
 	/**
 	 * Shifts the positions this animation produces by `delta` bars to the left,
 	 * so a right offset shift during the animation is not undone on the next frame.

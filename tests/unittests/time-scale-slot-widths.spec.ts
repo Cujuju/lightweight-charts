@@ -610,6 +610,52 @@ describe('TimeScale slot widths', () => {
 		expect(ts.visibleLogicalRange()?.right()).to.be.closeTo(timestamps.length - 1, precision);
 	});
 
+	it('revalidates spacing when revealing a pane at the same width', () => {
+		const ts = createTimeScale();
+		ts.setSlotWidths([{ time: internalTime(0), width: 2 }]);
+		const minBarSpacing = 12;
+
+		ts.setWidth(0);
+		ts.applyOptions({ minBarSpacing });
+		ts.setWidth(paneWidth);
+		expect(ts.barSpacing()).to.equal(minBarSpacing);
+	});
+
+	it('constrains a hidden layout update against the reveal width', () => {
+		const model = modelMock();
+		model.setRightOffset = () => {};
+		const margin = 600;
+		const ts = createTimeScale({ rightOffsetPixels: margin }, range(barCount), model);
+		ts.setSlotWidths([{ time: internalTime(0), width: 2 }]);
+		ts.restoreDefault();
+
+		ts.setWidth(0);
+		ts.updateSlotWidths([
+			{ time: internalTime(barCount - 2), width: maxSlotWidth },
+			{ time: internalTime(barCount - 1), width: maxSlotWidth },
+		]);
+		ts.setWidth(paneWidth * 2);
+		expect(marginAtBase(ts)).to.be.closeTo(margin, precision);
+	});
+
+	it('reserves positive space for a pending fit when its margin fills the revealed pane', () => {
+		const model = modelMock();
+		model.setRightOffset = () => {};
+		const margin = 80;
+		const timestamps = range(100);
+		const ts = createTimeScale({ minBarSpacing: 0, rightOffsetPixels: margin }, timestamps, model);
+		ts.setSlotWidths(timestamps.map((time: number) => ({ time: internalTime(time), width: 2 })));
+
+		for (const width of [margin, margin / 2]) {
+			ts.setWidth(0);
+			ts.fitContent();
+			ts.setWidth(width);
+			expect(ts.visibleLogicalRange()?.left()).to.be.closeTo(0, precision);
+			expect(ts.barSpacing()).to.be.greaterThan(0);
+			expect(Number.isFinite(ts.rightOffset())).to.be.equal(true);
+		}
+	});
+
 	it('fits the revealed pane when slots are first registered while hidden', () => {
 		const timestamps = range(100);
 		const ts = createTimeScale({}, timestamps);
@@ -752,6 +798,28 @@ describe('TimeScale slot widths', () => {
 		ts.applyAnimation(animations[0], Infinity);
 		ts.updateSlotWidths([{ time: internalTime(barCount), width: 2 }]);
 		ts.setWidth(paneWidth);
+		expect(marginAtBase(ts)).to.be.closeTo(margin, precision);
+	});
+
+	it('keeps a real-time animation destination in pixels when slots clear before reveal', (t: TestContext) => {
+		const start = 1000;
+		t.mock.method(performance, 'now', () => start);
+		const model = modelMock();
+		model.setRightOffset = () => {};
+		const margin = 24;
+		const ts = createTimeScale({ rightOffsetPixels: margin }, range(barCount), model);
+		ts.setSlotWidths([{ time: internalTime(barCount - 1), width: 2 }]);
+		const animations: ITimeScaleAnimation[] = [];
+		model.setTimeScaleAnimation = (animation: ITimeScaleAnimation) => { animations.push(animation); };
+
+		ts.setWidth(0);
+		ts.scrollToRealTime();
+		ts.setSlotWidths([]);
+		ts.setWidth(paneWidth);
+		ts.setBarSpacing(ts.barSpacing() * 2);
+		ts.applyAnimation(animations[0], start + 1);
+		expect(marginAtBase(ts)).to.be.greaterThan(0);
+		ts.applyAnimation(animations[0], Infinity);
 		expect(marginAtBase(ts)).to.be.closeTo(margin, precision);
 	});
 
