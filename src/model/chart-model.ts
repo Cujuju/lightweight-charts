@@ -976,11 +976,10 @@ export class ChartModel<HorzScaleItem> implements IDestroyable, IChartModelBase 
 			const replacedExistingWhitespace = firstChangedPointIndex === undefined;
 			const needShiftVisibleRangeOnNewBar = isLastSeriesBarVisible && (!replacedExistingWhitespace || allowShiftWhenReplacingWhitespace) && this._timeScale.options().shiftVisibleRangeOnNewBar;
 			if (isSeriesPointsAddedToRight && !needShiftVisibleRangeOnNewBar) {
-				// keep the visible range in place: apply the new base index first so that the shifted offset is clamped against it,
-				// then shift everything that holds an absolute right offset (the time scale, its scroll gesture snapshot and a running animation)
+				// keep the visible range in place: shift everything that holds an absolute right offset
+				// (the time scale, its scroll gesture snapshot and a running animation)
 				const delta = newBaseIndex - currentBaseIndex;
-				this._timeScale.setBaseIndex(newBaseIndex);
-				this.shiftTimeScaleAnimation(this._timeScale.shiftRightOffset(delta));
+				this.shiftTimeScaleAnimation(this._timeScale.advanceBaseIndex(newBaseIndex, delta));
 				return;
 			}
 		}

@@ -7,6 +7,9 @@ import { runInNewContext } from 'node:vm';
 
 import { chartOptionsDefaults } from '../../src/api/options/chart-options-defaults';
 import { timeScaleOptionsDefaults } from '../../src/api/options/time-scale-options-defaults';
+import { TimeScaleApi } from '../../src/api/time-scale-api';
+import { TimeAxisWidget } from '../../src/gui/time-axis-widget';
+import { Delegate } from '../../src/helpers/delegate';
 import { BarPrice } from '../../src/model/bar';
 import { ChartModel } from '../../src/model/chart-model';
 import { Coordinate } from '../../src/model/coordinate';
@@ -78,6 +81,15 @@ function applyFrame(ts: TimeScale<Time>, animation: ITimeScaleAnimation, time: n
 	ts.setSlotRightOffset(animation.getPosition(time));
 }
 
+// a chart model with a sized time scale, for flows that go through updateTimeScale()
+function chartModel(timeScaleOptions: Partial<HorzScaleOptions>, width: number = paneWidth): ChartModel<Time> {
+	const options = chartOptionsDefaults<Time>();
+	options.timeScale = { ...options.timeScale, ...timeScaleOptions };
+	const model = new ChartModel<Time>(() => {}, options, behavior);
+	model.timeScale().setWidth(width);
+	return model;
+}
+
 function coordinates(ts: TimeScale<Time>, count: number): number[] {
 	return range(count).map((i: number) => ts.indexToCoordinate(i as TimePointIndex));
 }
@@ -130,6 +142,12 @@ describe('SlotLayout', () => {
 
 		appended.update(40, 3, (i: number) => i === 3 ? 1 : widthAt(i));
 		expect(appended.maxWidth()).to.be.equal(3);
+		// growing past capacity while the widest slot narrows
+		const grown = new SlotLayout();
+		grown.update(4, 0, (i: number) => i === 3 ? 8 : 1);
+		grown.update(5, 3, () => 1);
+		expect(grown.maxWidth()).to.be.equal(1);
+
 		appended.update(2, 2, widthAt);
 		expect(appended.count()).to.be.equal(2);
 		expect(appended.maxWidth()).to.be.equal(2);
@@ -580,8 +598,7 @@ describe('TimeScale slot widths', () => {
 		const kineticBefore = ts.kineticScrollPosition();
 
 		ts.update(points(range(barCount + 1)), barCount);
-		ts.setBaseIndex(barCount as TimePointIndex);
-		const slotShift = ts.shiftRightOffset(1);
+		const slotShift = ts.advanceBaseIndex(barCount as TimePointIndex, 1);
 
 		coordinates(ts, barCount).forEach((x: number, i: number) => expect(x).to.be.closeTo(before[i], precision));
 		// slot offsets are measured from the base bar's right edge, which moved by the new bar's width
@@ -620,6 +637,91 @@ describe('TimeScale slot widths', () => {
 
 		model.updateTimeScale(barCount as TimePointIndex, points(range(barCount + 1)), barCount);
 		coordinates(ts, barCount).forEach((x: number, i: number) => expect(x).to.be.closeTo(before[i], precision));
+	});
+
+	it('keeps the view in place when an unfollowed wide append lowers the offset limit', () => {
+		const model = chartModel({ barSpacing: 10, shiftVisibleRangeOnNewBar: false }, 100);
+		const ts = model.timeScale();
+		model.updateTimeScale(19 as TimePointIndex, points(range(20)), 0);
+		ts.setSlotWidths([{ time: internalTime(20), width: 5 }]);
+		ts.setRightOffset(8);
+		const before = ts.indexToCoordinate(19 as TimePointIndex);
+		const kineticBefore = ts.kineticScrollPosition();
+
+		model.updateTimeScale(20 as TimePointIndex, points(range(21)), 20);
+		expect(ts.indexToCoordinate(19 as TimePointIndex)).to.be.closeTo(before, precision);
+		expect(ts.kineticScrollPosition()).to.be.closeTo(kineticBefore, precision);
+	});
+
+	it('keeps a scrolled-back view in place when a wide point is inserted right of it', () => {
+		const model = chartModel({ barSpacing: 10 }, 100);
+		const ts = model.timeScale();
+		model.updateTimeScale(19 as TimePointIndex, points(range(20)), 0);
+		ts.setSlotWidths([{ time: internalTime(16.5), width: 5 }]);
+		ts.setRightOffset(-10);
+		const before = coordinates(ts, 10);
+
+		const withInsert = [...range(17), 16.5, ...range(3, 17)];
+		model.updateTimeScale(20 as TimePointIndex, points(withInsert), 17);
+		coordinates(ts, 10).forEach((x: number, i: number) => expect(x).to.be.closeTo(before[i], precision));
+	});
+
+	it('keeps widths on their times when a point is removed with a late first changed index', () => {
+		const ts = createTimeScale({}, range(4));
+		ts.setSlotWidths([{ time: internalTime(1), width: 3 }, { time: internalTime(2), width: 5 }]);
+		// the data layer reports the last remaining index for a removal
+		ts.update(points([0, 2, 3]), 2);
+		ts.setBaseIndex(2 as TimePointIndex);
+		expect(ts.slotWidth(1 as TimePointIndex)).to.be.equal(5 * ts.barSpacing());
+		expect(ts.slotWidth(2 as TimePointIndex)).to.be.equal(ts.barSpacing());
+	});
+
+	it('keeps the first bar pinned when a fixed left edge chart is resized', () => {
+		for (const barSpacing of [5.3, 6, 7]) {
+			const ts = createTimeScale({ fixLeftEdge: true, barSpacing });
+			ts.setSlotWidths(slotWidths(range(barCount)));
+			ts.setRightOffset(-1e6);
+			const leftEdge = (): number => ts.indexToCoordinate(0 as TimePointIndex) - ts.slotWidth(0 as TimePointIndex) / 2;
+			expect(leftEdge()).to.be.closeTo(-1, precision);
+			for (const width of [paneWidth - 100, paneWidth + 60]) {
+				ts.setWidth(width);
+				expect(leftEdge(), `spacing ${barSpacing}, width ${width}`).to.be.closeTo(-1, precision);
+			}
+		}
+	});
+
+	it('counts a negative right offset option in bars when widths arrive before the data', () => {
+		const model = chartModel({ rightOffset: -2 });
+		const ts = model.timeScale();
+		ts.setSlotWidths([{ time: internalTime(19), width: 10 }]);
+		model.updateTimeScale(19 as TimePointIndex, points(range(20)), 0);
+		expect(ts.rightOffset()).to.be.closeTo(-2, precision);
+	});
+
+	it('refreshes the conflation factor when widths change the fixed-edge spacing', (t: TestContext) => {
+		// the conflation threshold reads the device pixel ratio from the window
+		const globals = globalThis as { window?: unknown };
+		globals.window = { devicePixelRatio: 1 };
+		t.after(() => { delete globals.window; });
+		const timestamps = range(barCount);
+		const ts = createTimeScale({ fixLeftEdge: true, fixRightEdge: true, enableConflation: true, minBarSpacing: 0.1 }, timestamps);
+		ts.setWidth(100);
+		ts.setBarSpacing(0.5);
+		expect(ts.conflationFactor()).to.be.equal(2);
+		ts.setSlotWidths(timestamps.map((time: number) => ({ time: internalTime(time), width: minSlotWidth })));
+		expect(ts.barSpacing()).to.be.closeTo(5, precision);
+		expect(ts.conflationFactor()).to.be.equal(1);
+	});
+
+	it('reports an unparseable time as a RangeError through the API', () => {
+		const model = modelMock();
+		const ts = createTimeScale({}, range(barCount), model);
+		model.timeScale = () => ts;
+		const axis = { sizeChanged: () => new Delegate<number, number>() } as unknown as TimeAxisWidget<Time>;
+		const api = new TimeScaleApi(model, axis, behavior);
+		api.setSlotWidths([{ time: 0 as UTCTimestamp, width: 2 }]);
+		expect(() => api.setSlotWidths([{ time: 'not a date', width: 3 }])).to.throw(RangeError);
+		expect(ts.slotWidth(0 as TimePointIndex)).to.be.equal(2 * ts.barSpacing());
 	});
 
 	it('applies a width supplied before its time point exists', () => {
@@ -753,6 +855,22 @@ describe('TimeScale slot widths', () => {
 		const whitespaceCenter = ts.indexToCoordinate(1 as TimePointIndex);
 
 		expect(ts.coordinateToIndex(whitespaceCenter, true)).to.equal(2);
+	});
+
+	it('stops the whitespace search at the nearest populated slot', () => {
+		const count = 5000;
+		const model = modelMock();
+		const series = { fulfilledIndices: () => [0, count - 1] } as unknown as Series<'Line'>;
+		model.serieses = () => [series];
+		const ts = createTimeScale({ ignoreWhitespaceIndices: true, barSpacing: 1 }, range(count), model);
+		ts.setSlotWidths([{ time: internalTime(count - 1), width: 2 }]);
+		ts.setRightOffset(-(count - 400));
+		let steps = 0;
+		const indexToCoordinate = ts.indexToCoordinate.bind(ts);
+		ts.indexToCoordinate = (index: TimePointIndex) => { steps++; return indexToCoordinate(index); };
+
+		expect(ts.coordinateToIndex(indexToCoordinate(1 as TimePointIndex), true)).to.equal(0);
+		expect(steps).to.be.lessThan(10);
 	});
 });
 

@@ -218,7 +218,11 @@ export class TimeScaleApi<HorzScaleItem> implements ITimeScaleApi<HorzScaleItem>
 	}
 
 	private _toInternalSlotWidth(entry: SlotWidth<HorzScaleItem>): InternalSlotWidth {
-		return { time: this._horzScaleBehavior.convertHorzItemToInternal(entry.time), width: entry.width };
+		try {
+			return { time: this._horzScaleBehavior.convertHorzItemToInternal(entry.time), width: entry.width };
+		} catch (error) {
+			throw new RangeError(`slot width time is invalid: ${String(error)}`);
+		}
 	}
 
 	private _onVisibleBarsChanged(): void {
