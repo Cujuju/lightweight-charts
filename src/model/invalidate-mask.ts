@@ -1,5 +1,4 @@
-import { InternalHorzScaleItem } from './ihorz-scale-behavior';
-import { IRange, LogicalRange } from './time-data';
+import { LogicalRange } from '../model/time-data';
 
 export const enum InvalidationLevel {
 	None = 0,
@@ -32,41 +31,34 @@ export const enum TimeScaleInvalidationType {
 	StopAnimation,
 }
 
-export type TimeScaleRange = (LogicalRange & { time?: undefined }) | { time: IRange<InternalHorzScaleItem>; logical?: LogicalRange };
-
 export interface TimeScaleApplyRangeInvalidation {
 	type: TimeScaleInvalidationType.ApplyRange;
-	value: TimeScaleRange;
+	value: LogicalRange;
 }
 
 export interface TimeScaleFitContentInvalidation {
 	type: TimeScaleInvalidationType.FitContent;
-	slotFitRequested: boolean;
 }
 
 export interface TimeScaleApplyRightOffsetInvalidation {
 	type: TimeScaleInvalidationType.ApplyRightOffset;
-	value: number | undefined;
-	offsetPixels?: number;
+	value: number;
+	/** `value` is in default-width slots (pixels / bar spacing) instead of bars. */
+	slotUnits?: boolean;
 }
 
 export interface TimeScaleApplyBarSpacingInvalidation {
 	type: TimeScaleInvalidationType.ApplyBarSpacing;
 	value: number;
-	revalidate?: boolean;
 }
 
 export interface TimeScaleResetInvalidation {
 	type: TimeScaleInvalidationType.Reset;
 }
 
-/** A destination with no bar offset resolves in pixels, even in a uniform layout. */
-export type TimeScaleAnimationDestination = { bars: number; pixels?: number } | { bars?: undefined; pixels: number };
-
 export interface ITimeScaleAnimation {
 	getPosition(time: number): number;
 	finished(time: number): boolean;
-	readonly destination?: TimeScaleAnimationDestination;
 	/**
 	 * Shifts the positions this animation produces by `delta` bars to the left,
 	 * so a right offset shift during the animation is not undone on the next frame.
@@ -123,13 +115,13 @@ export class InvalidateMask {
 		};
 	}
 
-	public setFitContent(slotFitRequested: boolean): void {
+	public setFitContent(): void {
 		this.stopTimeScaleAnimation();
 		// modifies both bar spacing and right offset
-		this._timeScaleInvalidations = [{ type: TimeScaleInvalidationType.FitContent, slotFitRequested }];
+		this._timeScaleInvalidations = [{ type: TimeScaleInvalidationType.FitContent }];
 	}
 
-	public applyRange(range: TimeScaleRange): void {
+	public applyRange(range: LogicalRange): void {
 		this.stopTimeScaleAnimation();
 		// modifies both bar spacing and right offset
 		this._timeScaleInvalidations = [{ type: TimeScaleInvalidationType.ApplyRange, value: range }];
@@ -151,14 +143,14 @@ export class InvalidateMask {
 		this._timeScaleInvalidations = [{ type: TimeScaleInvalidationType.Reset }];
 	}
 
-	public setBarSpacing(barSpacing: number, revalidate?: boolean): void {
+	public setBarSpacing(barSpacing: number): void {
 		this.stopTimeScaleAnimation();
-		this._timeScaleInvalidations.push({ type: TimeScaleInvalidationType.ApplyBarSpacing, value: barSpacing, revalidate });
+		this._timeScaleInvalidations.push({ type: TimeScaleInvalidationType.ApplyBarSpacing, value: barSpacing });
 	}
 
-	public setRightOffset(offset: number | undefined, offsetPixels?: number): void {
+	public setRightOffset(offset: number, slotUnits?: boolean): void {
 		this.stopTimeScaleAnimation();
-		this._timeScaleInvalidations.push({ type: TimeScaleInvalidationType.ApplyRightOffset, value: offset, offsetPixels });
+		this._timeScaleInvalidations.push({ type: TimeScaleInvalidationType.ApplyRightOffset, value: offset, slotUnits });
 	}
 
 	public timeScaleInvalidations(): readonly TimeScaleInvalidation[] {
@@ -187,16 +179,16 @@ export class InvalidateMask {
 	private _applyTimeScaleInvalidation(invalidation: TimeScaleInvalidation): void {
 		switch (invalidation.type) {
 			case TimeScaleInvalidationType.FitContent:
-				this.setFitContent(invalidation.slotFitRequested);
+				this.setFitContent();
 				break;
 			case TimeScaleInvalidationType.ApplyRange:
 				this.applyRange(invalidation.value);
 				break;
 			case TimeScaleInvalidationType.ApplyBarSpacing:
-				this.setBarSpacing(invalidation.value, invalidation.revalidate);
+				this.setBarSpacing(invalidation.value);
 				break;
 			case TimeScaleInvalidationType.ApplyRightOffset:
-				this.setRightOffset(invalidation.value, invalidation.offsetPixels);
+				this.setRightOffset(invalidation.value, invalidation.slotUnits);
 				break;
 			case TimeScaleInvalidationType.Reset:
 				this.resetTimeScale();

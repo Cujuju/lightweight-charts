@@ -680,22 +680,27 @@ export class ChartWidget<HorzScaleItem> implements IDestroyable, IChartWidgetBas
 		const timeScale = this._model.timeScale();
 		switch (invalidation.type) {
 			case TimeScaleInvalidationType.FitContent:
-				timeScale.fitContent(invalidation.slotFitRequested);
+				timeScale.fitContent();
 				break;
 			case TimeScaleInvalidationType.ApplyRange:
 				timeScale.setLogicalRange(invalidation.value);
 				break;
 			case TimeScaleInvalidationType.ApplyBarSpacing:
-				timeScale.setBarSpacing(invalidation.value, invalidation.revalidate);
+				timeScale.setBarSpacing(invalidation.value);
 				break;
 			case TimeScaleInvalidationType.ApplyRightOffset:
-				timeScale.setRightOffset(invalidation.value, invalidation.offsetPixels);
+				if (invalidation.slotUnits) {
+					timeScale.setSlotRightOffset(invalidation.value);
+				} else {
+					timeScale.setRightOffset(invalidation.value);
+				}
 				break;
 			case TimeScaleInvalidationType.Reset:
 				timeScale.restoreDefault();
 				break;
 			case TimeScaleInvalidationType.Animation:
-				timeScale.applyAnimation(invalidation.value, time);
+				// apply the frame even if the animation has just finished, otherwise the view stops short of the target
+				timeScale.setSlotRightOffset(invalidation.value.getPosition(time));
 				break;
 		}
 	}

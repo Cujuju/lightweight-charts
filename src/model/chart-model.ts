@@ -16,7 +16,7 @@ import { DefaultPriceScaleId, isDefaultPriceScale } from './default-price-scale'
 import { GridOptions } from './grid';
 import { IPrimitiveHitTestSource } from './idata-source';
 import { IHorzScaleBehavior, InternalHorzScaleItem } from './ihorz-scale-behavior';
-import { InvalidateMask, InvalidationLevel, ITimeScaleAnimation, TimeScaleRange } from './invalidate-mask';
+import { InvalidateMask, InvalidationLevel, ITimeScaleAnimation } from './invalidate-mask';
 import { IPriceDataSource } from './iprice-data-source';
 import { ISeries } from './iseries';
 import { ColorType, LayoutOptions } from './layout-options';
@@ -26,10 +26,9 @@ import { DEFAULT_STRETCH_FACTOR, MIN_PANE_HEIGHT, Pane } from './pane';
 import { hitTestPane } from './pane-hit-test';
 import { Point } from './point';
 import { PriceScale, PriceScaleOptions } from './price-scale';
-import { RangeImpl } from './range-impl';
 import { Series } from './series';
 import { SeriesType } from './series-options';
-import { TimePointIndex, TimeScalePoint } from './time-data';
+import { LogicalRange, TimePointIndex, TimeScalePoint } from './time-data';
 import { HorzScaleOptions, ITimeScale, TimeScale } from './time-scale';
 import { TouchMouseEventData } from './touch-mouse-event-data';
 
@@ -705,7 +704,7 @@ export class ChartModel<HorzScaleItem> implements IDestroyable, IChartModelBase 
 
 	public setWidth(width: number): void {
 		this._width = width;
-		this._timeScale.setWidth(this._width, false);
+		this._timeScale.setWidth(this._width);
 		this._panes.forEach((pane: Pane) => pane.setWidth(width));
 		this.recalculateAllPanes();
 	}
@@ -954,18 +953,39 @@ export class ChartModel<HorzScaleItem> implements IDestroyable, IChartModelBase 
 
 	public updateTimeScale(newBaseIndex: TimePointIndex | null, newPoints?: readonly TimeScalePoint[], firstChangedPointIndex?: number): void {
 		const oldFirstTime = this._timeScale.indexToTime(0 as TimePointIndex);
-		const slotViewport = this._timeScale.hasSlotViewport();
-		const previousVisibleBars = slotViewport ? this._timeScale.visibleStrictRangeForUpdate() : undefined;
 
 		if (newPoints !== undefined && firstChangedPointIndex !== undefined) {
-			this._timeScale.update(newPoints, firstChangedPointIndex, slotViewport);
+			this._timeScale.update(newPoints, firstChangedPointIndex);
 		}
 
-		const appendDelta = this._timeScaleAppendDelta(newBaseIndex, oldFirstTime, previousVisibleBars, firstChangedPointIndex === undefined);
-		const slotShift = this._timeScale.setBaseIndex(newBaseIndex, appendDelta);
-		if (appendDelta !== 0) {
-			this._shiftTimeScaleAnimation(slotShift);
+		const newFirstTime = this._timeScale.indexToTime(0 as TimePointIndex);
+
+		const currentBaseIndex = this._timeScale.baseIndex();
+		const visibleBars = this._timeScale.visibleStrictRange();
+
+		// if time scale cannot return current visible bars range (e.g. time scale has zero-width)
+		// then we do not need to update right offset to shift visible bars range to have the same right offset as we have before new bar
+		// (and actually we cannot)
+		if (visibleBars !== null && oldFirstTime !== null && newFirstTime !== null) {
+			const isLastSeriesBarVisible = visibleBars.contains(currentBaseIndex);
+			const isLeftBarShiftToLeft = this._horzScaleBehavior.key(oldFirstTime) > this._horzScaleBehavior.key(newFirstTime);
+			const isSeriesPointsAdded = newBaseIndex !== null && newBaseIndex > currentBaseIndex;
+			const isSeriesPointsAddedToRight = isSeriesPointsAdded && !isLeftBarShiftToLeft;
+
+			const allowShiftWhenReplacingWhitespace = this._timeScale.options().allowShiftVisibleRangeOnWhitespaceReplacement;
+			const replacedExistingWhitespace = firstChangedPointIndex === undefined;
+			const needShiftVisibleRangeOnNewBar = isLastSeriesBarVisible && (!replacedExistingWhitespace || allowShiftWhenReplacingWhitespace) && this._timeScale.options().shiftVisibleRangeOnNewBar;
+			if (isSeriesPointsAddedToRight && !needShiftVisibleRangeOnNewBar) {
+				// keep the visible range in place: apply the new base index first so that the shifted offset is clamped against it,
+				// then shift everything that holds an absolute right offset (the time scale, its scroll gesture snapshot and a running animation)
+				const delta = newBaseIndex - currentBaseIndex;
+				this._timeScale.setBaseIndex(newBaseIndex);
+				this.shiftTimeScaleAnimation(this._timeScale.shiftRightOffset(delta));
+				return;
+			}
 		}
+
+		this._timeScale.setBaseIndex(newBaseIndex);
 	}
 
 	public recalculatePane(pane: Pane | null): void {
@@ -1052,11 +1072,11 @@ export class ChartModel<HorzScaleItem> implements IDestroyable, IChartModelBase 
 
 	public fitContent(): void {
 		const mask = InvalidateMask.light();
-		mask.setFitContent(this._timeScale.slotLayout() !== null);
+		mask.setFitContent();
 		this._invalidate(mask);
 	}
 
-	public setTargetLogicalRange(range: TimeScaleRange): void {
+	public setTargetLogicalRange(range: LogicalRange): void {
 		const mask = InvalidateMask.light();
 		mask.applyRange(range);
 		this._invalidate(mask);
@@ -1068,15 +1088,15 @@ export class ChartModel<HorzScaleItem> implements IDestroyable, IChartModelBase 
 		this._invalidate(mask);
 	}
 
-	public setBarSpacing(spacing: number, revalidate?: boolean): void {
+	public setBarSpacing(spacing: number): void {
 		const mask = InvalidateMask.light();
-		mask.setBarSpacing(spacing, revalidate);
+		mask.setBarSpacing(spacing);
 		this._invalidate(mask);
 	}
 
-	public setRightOffset(offset: number | undefined, offsetPixels?: number): void {
+	public setRightOffset(offset: number, slotUnits?: boolean): void {
 		const mask = InvalidateMask.light();
-		mask.setRightOffset(offset, offsetPixels);
+		mask.setRightOffset(offset, slotUnits);
 		this._invalidate(mask);
 	}
 
@@ -1092,6 +1112,13 @@ export class ChartModel<HorzScaleItem> implements IDestroyable, IChartModelBase 
 		const mask = InvalidateMask.light();
 		mask.stopTimeScaleAnimation();
 		this._invalidate(mask);
+	}
+
+	/** Moves a running time scale animation by `delta` default-width slots to the left. */
+	public shiftTimeScaleAnimation(delta: number): void {
+		if (this._timeScaleAnimation !== null) {
+			this._timeScaleAnimation.shift(delta);
+		}
 	}
 
 	public defaultVisiblePriceScaleId(): string {
@@ -1268,33 +1295,5 @@ export class ChartModel<HorzScaleItem> implements IDestroyable, IChartModelBase 
 		}
 
 		return false;
-	}
-
-	private _shiftTimeScaleAnimation(delta: number): void {
-		if (this._timeScaleAnimation !== null) {
-			this._timeScaleAnimation.shift(delta);
-		}
-	}
-
-	private _timeScaleAppendDelta(
-		newBase: TimePointIndex | null,
-		oldFirstTime: InternalHorzScaleItem | null,
-		previousVisibleBars: RangeImpl<TimePointIndex> | null | undefined,
-		replacedWhitespace: boolean
-	): number {
-		const oldBase = this._timeScale.baseIndex();
-		const newFirstTime = this._timeScale.indexToTime(0 as TimePointIndex);
-		const visibleBars = previousVisibleBars === undefined ? this._timeScale.visibleStrictRange() : previousVisibleBars;
-		if (visibleBars === null || oldFirstTime === null || newFirstTime === null || newBase === null || newBase <= oldBase) {
-			return 0;
-		}
-		if (this._horzScaleBehavior.key(oldFirstTime) > this._horzScaleBehavior.key(newFirstTime)) {
-			return 0;
-		}
-		const options = this._timeScale.options();
-		const follow = visibleBars.contains(oldBase)
-			&& (!replacedWhitespace || options.allowShiftVisibleRangeOnWhitespaceReplacement)
-			&& options.shiftVisibleRangeOnNewBar;
-		return follow ? 0 : newBase - oldBase;
 	}
 }
