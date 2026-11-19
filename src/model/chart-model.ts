@@ -954,9 +954,8 @@ export class ChartModel<HorzScaleItem> implements IDestroyable, IChartModelBase 
 	public updateTimeScale(newBaseIndex: TimePointIndex | null, newPoints?: readonly TimeScalePoint[], firstChangedPointIndex?: number): void {
 		const oldFirstTime = this._timeScale.indexToTime(0 as TimePointIndex);
 
-		const offsetPixels = this._timeScale.rightOffsetPixels();
 		if (newPoints !== undefined && firstChangedPointIndex !== undefined) {
-			this._timeScale.update(newPoints, firstChangedPointIndex);
+			this._timeScale.update(newPoints, firstChangedPointIndex, true);
 		}
 
 		const newFirstTime = this._timeScale.indexToTime(0 as TimePointIndex);
@@ -980,14 +979,12 @@ export class ChartModel<HorzScaleItem> implements IDestroyable, IChartModelBase 
 				// keep the visible range in place: apply the new base index first so that the shifted offset is clamped against it,
 				// then shift everything that holds an absolute right offset (the time scale, its scroll gesture snapshot and a running animation)
 				const delta = newBaseIndex - currentBaseIndex;
-				this._timeScale.setBaseIndex(newBaseIndex);
-				this._shiftTimeScaleAnimation(this._timeScale.shiftRightOffset(delta));
+				this._shiftTimeScaleAnimation(this._timeScale.setBaseIndex(newBaseIndex, delta));
 				return;
 			}
 		}
 
-		// Resolve the captured margin from the new base when the viewport follows it.
-		this._timeScale.setBaseIndex(newBaseIndex, offsetPixels);
+		this._timeScale.setBaseIndex(newBaseIndex);
 	}
 
 	public recalculatePane(pane: Pane | null): void {

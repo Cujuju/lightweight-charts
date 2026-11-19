@@ -34,6 +34,12 @@ const enum Constants {
 	MinVisibleBarsCount = 2,
 }
 
+interface ViewportIntent {
+	range?: RangeImpl<TimePointIndex> | 'fit';
+	spacing?: number;
+	offset?: { bars: number | undefined; pixels?: number };
+}
+
 interface TransitionState {
 	barSpacing: number;
 	rightOffset: number;
@@ -338,6 +344,8 @@ export class TimeScale<HorzScaleItem> implements ITimeScale {
 	private _width: number = 0;
 	private _baseIndexOrNull: TimePointIndex | null = null;
 	private _rightOffset: number;
+	// With slots and a pixel default, the signed gap from the base slot to the pane edge.
+	private _pixelMargin: number | undefined;
 	private _points: readonly TimeScalePoint[] = [];
 	private _barSpacing: number;
 	private _scrollStartPoint: Coordinate | null = null;
@@ -366,9 +374,8 @@ export class TimeScale<HorzScaleItem> implements ITimeScale {
 	// null while no slot width differs from the default; every conversion then uses the uniform formulas
 	private _slots: SlotLayout | null = null;
 	private readonly _slotWidthByKey: Map<InternalHorzScaleItemKey, number> = new Map();
-	private _pendingViewport: (() => void)[] = [];
-	private _deferViewport: boolean = false;
-	private _pendingFitLayout: SlotLayout | null | undefined;
+	private _pendingIntent: ViewportIntent = {};
+	private _awaitingFirstSlotViewport: boolean = false;
 	// logical index under the scroll start point, relative to the base index
 	private _scrollAnchorFromBase: number | null = null;
 	private _scrollLastPoint: Coordinate | null = null;
@@ -426,9 +433,8 @@ export class TimeScale<HorzScaleItem> implements ITimeScale {
 		}
 		this._checkRightOffsetPixels(options);
 
-		if (options.minBarSpacing !== undefined || options.maxBarSpacing !== undefined) {
-			// yes, if we apply bar spacing constrains then we need to correct bar spacing
-			// the easiest way is to apply it once again
+		if ((options.minBarSpacing !== undefined || options.maxBarSpacing !== undefined) && !this._awaitingFirstSlotViewport) {
+			// A pending viewport uses the current spacing constraints at first sizing.
 			this._model.setBarSpacing(options.barSpacing ?? this._barSpacing);
 		}
 
@@ -546,7 +552,6 @@ export class TimeScale<HorzScaleItem> implements ITimeScale {
 		const previousVisibleRange = this.visibleLogicalRange();
 
 		const oldWidth = this._width;
-		this._restorePendingFitLayout();
 		this._width = newWidth;
 		this._visibleRangeInvalidated = true;
 
@@ -579,12 +584,12 @@ export class TimeScale<HorzScaleItem> implements ITimeScale {
 		// updating bar spacing should be first because right offset depends on it
 		this._correctBarSpacing();
 		if (pinFirstBar) {
-			this._rightOffset = this._minRightOffset() ?? this._rightOffset;
+			this._setLogicalOffset(ensureNotNull(this._minRightOffset()));
+		}
+		if (oldWidth === 0 && this._applyPendingIntent(recalculatePanes)) {
+			return;
 		}
 		this._correctOffset();
-		if (oldWidth === 0) {
-			this._applyPendingViewport(recalculatePanes);
-		}
 	}
 
 	public indexToCoordinate(index: TimePointIndex): Coordinate {
@@ -637,36 +642,15 @@ export class TimeScale<HorzScaleItem> implements ITimeScale {
 	}
 
 	public setRightOffset(offset: number | undefined, offsetPixels?: number): void {
-		const usePixelOffset = offsetPixels !== undefined && (this._slots !== null || offset === undefined);
-		if (this._width === 0 && this._queueViewportChange(() => this._setRightOffset(offset, offsetPixels), usePixelOffset)) {
-			return;
+		if (this._width === 0) {
+			this._pendingIntent.offset = { bars: offset, pixels: offsetPixels };
+			if (this._awaitingFirstSlotViewport) {
+				return;
+			}
 		}
-		this._setRightOffset(offset, usePixelOffset ? offsetPixels : undefined);
+		this._applyRightOffset(offset, offsetPixels);
+		this._correctOffset();
 		this._recalculateViewport();
-	}
-
-	/**
-	 * Shifts the right offset to compensate for bars being appended or replace to the right
-	 * so that the visible range stays in place.
-	 */
-	public shiftRightOffset(delta: number): number {
-		if (this._commonTransitionStartState !== null) {
-			this._commonTransitionStartState.rightOffset -= delta;
-		}
-		if (this._scrollAnchorFromBase !== null) {
-			this._scrollAnchorFromBase -= delta;
-		}
-
-		// the base index has already moved by delta
-		const baseIndex = this.baseIndex();
-		const previousBaseIndex = baseIndex - delta;
-		const slotRightOffsetBefore = this._slotRightOffsetFor(this._rightOffset, previousBaseIndex);
-		this.setRightOffset(this._rightOffset - delta);
-		this._appendCompensation += slotRightOffsetBefore - this.slotRightOffset();
-
-		return this._slots === null
-			? delta
-			: this._slots.logicalToSlot(baseIndex + 0.5) - this._slots.logicalToSlot(previousBaseIndex + 0.5);
 	}
 
 	/**
@@ -685,7 +669,9 @@ export class TimeScale<HorzScaleItem> implements ITimeScale {
 	 * Equal to `rightOffset()` without slot widths. Kinetic and animated scrolling run in this unit.
 	 */
 	public slotRightOffset(): number {
-		return this._slotRightOffsetFor(this._rightOffset, this.baseIndex());
+		return this._pixelMargin === undefined
+			? this._slotRightOffsetFor(this._rightOffset, this.baseIndex())
+			: this._pixelMargin / this._barSpacing;
 	}
 
 	public setSlotRightOffset(slotOffset: number): void {
@@ -716,21 +702,19 @@ export class TimeScale<HorzScaleItem> implements ITimeScale {
 	}
 
 	public setBarSpacing(newBarSpacing: number): void {
-		if (this._width === 0 && this._queueViewportChange(() => this._applyBarSpacing(newBarSpacing))) {
-			return;
+		if (this._width === 0) {
+			this._pendingIntent.spacing = newBarSpacing;
+			if (this._awaitingFirstSlotViewport) {
+				return;
+			}
 		}
 		this._applyBarSpacing(newBarSpacing);
+		this._correctOffset();
 		this._recalculateViewport();
 	}
 
 	public rightOffset(): number {
-		return this._rightOffset;
-	}
-
-	public rightOffsetPixels(includeUniform: boolean = false): number | undefined {
-		return (includeUniform || this._slots !== null) && this._width > 0 && this._options.rightOffsetPixels !== undefined && this._barSpacing !== 0
-			? this.slotRightOffset() * this._barSpacing
-			: undefined;
+		return this._pixelMargin === undefined ? this._rightOffset : this._rightOffsetForSlotOffset(this.slotRightOffset());
 	}
 
 	// eslint-disable-next-line complexity
@@ -818,6 +802,7 @@ export class TimeScale<HorzScaleItem> implements ITimeScale {
 
 	public restoreDefault(): void {
 		this._visibleRangeInvalidated = true;
+		this._pendingIntent.range = undefined;
 
 		this.setBarSpacing(this._options.barSpacing);
 
@@ -828,18 +813,18 @@ export class TimeScale<HorzScaleItem> implements ITimeScale {
 		this.setRightOffset(offset, pixelOffset);
 	}
 
-	public setBaseIndex(baseIndex: TimePointIndex | null, offsetPixels?: number): void {
+	public setBaseIndex(baseIndex: TimePointIndex | null, appendDelta: number = 0): number {
 		this._visibleRangeInvalidated = true;
 		this._baseIndexOrNull = baseIndex;
 		if (this._slots !== null && this._options.fixLeftEdge && this._options.fixRightEdge) {
 			this._setBarSpacing(this._barSpacing);
 		}
-		if (offsetPixels !== undefined) {
-			this._rightOffset = this._rightOffsetForSlotOffset(offsetPixels / this._barSpacing);
+		if (this._slots !== null && appendDelta !== 0) {
+			return this._shiftRightOffset(appendDelta);
 		}
 		this._correctOffset();
-
 		this._doFixLeftEdge();
+		return appendDelta === 0 ? 0 : this._shiftRightOffset(appendDelta);
 	}
 
 	/**
@@ -937,7 +922,7 @@ export class TimeScale<HorzScaleItem> implements ITimeScale {
 		this._scrollLastPoint = x;
 		if (this._slots !== null) {
 			// keep the point grabbed at scroll start under the pointer
-			this._rightOffset = this._rightOffsetPlacing(this._slots, this.baseIndex() + ensureNotNull(this._scrollAnchorFromBase), x);
+			this._setLogicalOffset(this._rightOffsetPlacing(this._slots, this.baseIndex() + ensureNotNull(this._scrollAnchorFromBase), x));
 		} else if (this._scrollKineticAnchor !== null) {
 			this._rightOffset = ensureNotNull(this._scrollAnchorFromBase) + this._rightOffsetForCoordinate(x) - 0.5;
 		} else {
@@ -1010,13 +995,15 @@ export class TimeScale<HorzScaleItem> implements ITimeScale {
 		});
 	}
 
-	public update(newPoints: readonly TimeScalePoint[], firstChangedPointIndex: number): void {
+	public update(newPoints: readonly TimeScalePoint[], firstChangedPointIndex: number, baseUpdateFollows: boolean = false): void {
 		this._visibleRangeInvalidated = true;
 
 		this._points = newPoints;
 		this._tickMarks.setTimeScalePoints(newPoints, firstChangedPointIndex);
 		this._syncSlotLayout(firstChangedPointIndex);
-		this._correctOffset();
+		if (!baseUpdateFollows || this._slots === null) {
+			this._correctOffset();
+		}
 	}
 
 	public visibleBarsChanged(): ISubscription {
@@ -1039,37 +1026,20 @@ export class TimeScale<HorzScaleItem> implements ITimeScale {
 		return this._baseIndexOrNull || 0 as TimePointIndex;
 	}
 
-	public setVisibleRange(range: RangeImpl<TimePointIndex>, applyDefaultOffset?: boolean): void {
-		const defaultOffset = applyDefaultOffset
-			? { rightOffset: this._options.rightOffset, rightOffsetPixels: this._options.rightOffsetPixels }
-			: undefined;
-		if (this._width === 0 && this._queueViewportChange(() => this._applyVisibleRange(range, defaultOffset))) {
+	public setVisibleRange(range: RangeImpl<TimePointIndex>): void {
+		if (this._recordRange(range)) {
 			return;
 		}
-		this._applyVisibleRange(range, defaultOffset);
+		this._applyVisibleRange(range);
+		this._correctOffset();
 		this._recalculateViewport();
 	}
 
 	public fitContent(): void {
-		const first = this._firstIndex();
-		const last = this._lastIndex();
-		if (first === null || last === null) {
-			return;
+		if (!this._recordRange('fit') && this._fitContent()) {
+			this._correctOffset();
+			this._recalculateViewport();
 		}
-		if (this._width === 0 && this._pendingFitLayout === undefined) {
-			// Replay layout changes after the fit that precedes them.
-			this._pendingFitLayout = this._slots;
-		}
-		if (this._slots !== null && this._options.fixRightEdge) {
-			this.setVisibleRange(new RangeImpl(first, this._fixedRightIndex(last)));
-			return;
-		}
-
-		// If we are not using rightOffsetPixels then we should include the user defined rightOffset
-		// in the Range so that the bar scaling considers the space required for the offset.
-		const usePixelOffset = this._slots === null ? !!this._options.rightOffsetPixels : this._options.rightOffsetPixels !== undefined;
-		const rightOffsetBars = usePixelOffset ? 0 : this._options.rightOffset || 0;
-		this.setVisibleRange(new RangeImpl(first, last + rightOffsetBars as TimePointIndex), true);
 	}
 
 	public setLogicalRange(range: LogicalRange): void {
@@ -1179,7 +1149,9 @@ export class TimeScale<HorzScaleItem> implements ITimeScale {
 
 	/** Slot-unit position of the right edge of the pane. */
 	private _rightEdgeSlot(slots: SlotLayout): number {
-		return slots.logicalToSlot(this.baseIndex() + this._rightOffset + 0.5);
+		return this._pixelMargin === undefined
+			? slots.logicalToSlot(this.baseIndex() + this._rightOffset + 0.5)
+			: slots.start(this.baseIndex() + 1) + this.slotRightOffset();
 	}
 
 	/** Unrounded logical index at `x`; bar `i` spans `i - 0.5 .. i + 0.5`. */
@@ -1211,8 +1183,36 @@ export class TimeScale<HorzScaleItem> implements ITimeScale {
 			return slotOffset;
 		}
 		const baseIndex = this.baseIndex();
-		const rightEdgeSlot = this._slots.logicalToSlot(baseIndex + 0.5) + slotOffset;
+		const rightEdgeSlot = this._slots.start(baseIndex + 1) + slotOffset;
 		return this._slots.slotToLogical(rightEdgeSlot) - 0.5 - baseIndex;
+	}
+
+	/** Compensates for an advancing base when the viewport stays put. */
+	private _shiftRightOffset(delta: number): number {
+		if (this._commonTransitionStartState !== null) {
+			this._commonTransitionStartState.rightOffset -= delta;
+		}
+		if (this._scrollAnchorFromBase !== null) {
+			this._scrollAnchorFromBase -= delta;
+		}
+
+		const base = this.baseIndex();
+		const previousBase = base - delta;
+		const slots = this._slots;
+		const slotShift = slots === null ? delta : slots.start(base + 1) - slots.start(previousBase + 1);
+		const before = this._pixelMargin === undefined
+			? this._slotRightOffsetFor(this._rightOffset, previousBase)
+			: this.slotRightOffset();
+		if (this._pixelMargin === undefined) {
+			this._setLogicalOffset(this._rightOffset - delta);
+		} else {
+			this._pixelMargin -= slotShift * this._barSpacing;
+		}
+		this._visibleRangeInvalidated = true;
+		this._correctOffset();
+		this._recalculateViewport();
+		this._appendCompensation += before - this.slotRightOffset();
+		return slotShift;
 	}
 
 	private _captureScrollKineticAnchor(): void {
@@ -1221,67 +1221,88 @@ export class TimeScale<HorzScaleItem> implements ITimeScale {
 		}
 	}
 
-	private _queueViewportChange(apply: () => void, usePixelOffset: boolean = false): boolean {
-		// Keep uniform updates immediate in case slots are never registered.
-		this._pendingViewport.push(apply);
-		this._deferViewport ||= this._slots !== null || usePixelOffset;
-		return this._deferViewport;
-	}
-
-	private _restorePendingFitLayout(): void {
-		if (this._pendingFitLayout !== undefined) {
-			this._slots = this._pendingFitLayout;
-			this._pendingFitLayout = undefined;
+	private _recordRange(range: ViewportIntent['range']): boolean {
+		if (this._width !== 0) {
+			return false;
 		}
+		this._pendingIntent = { range };
+		return this._awaitingFirstSlotViewport;
 	}
 
-	private _applyPendingViewport(recalculatePanes: boolean): void {
-		const pending = this._pendingViewport;
-		const replay = pending.length > 0 && (this._slots !== null || this._deferViewport);
-		this._pendingViewport = [];
-		this._deferViewport = false;
-		if (replay) {
-			pending.forEach((apply: () => void) => apply());
-			if (recalculatePanes) {
-				this._recalculateViewport();
-			}
+	private _applyPendingIntent(recalculatePanes: boolean): boolean {
+		const { range, spacing, offset } = this._pendingIntent;
+		this._pendingIntent = {};
+		if (!this._awaitingFirstSlotViewport) {
+			return false;
 		}
-	}
-
-	private _setRightOffset(offset: number | undefined, offsetPixels?: number): void {
-		this._visibleRangeInvalidated = true;
-		this._rightOffset = offsetPixels !== undefined
-			? this._rightOffsetForSlotOffset(offsetPixels / this._barSpacing)
-			: ensureDefined(offset);
+		this._awaitingFirstSlotViewport = false;
+		const appliedRange = range === 'fit'
+			? this._fitContent(spacing)
+			: range !== undefined && this._applyVisibleRange(range, false, spacing);
+		if (!appliedRange && spacing !== undefined) {
+			this._applyBarSpacing(spacing);
+		}
+		if (offset !== undefined) {
+			this._applyRightOffset(offset.bars, offset.pixels, true);
+		}
 		this._correctOffset();
+		if (recalculatePanes && (appliedRange || spacing !== undefined || offset !== undefined)) {
+			this._recalculateViewport();
+		}
+		return true;
+	}
+
+	private _applyRightOffset(bars: number | undefined, pixels?: number, resolvePixels: boolean = false): void {
+		if (this._slots !== null && pixels !== undefined) {
+			this._pixelMargin = pixels;
+		} else if (pixels !== undefined && (resolvePixels || bars === undefined)) {
+			this._setLogicalOffset(pixels / this._barSpacing);
+		} else {
+			this._setLogicalOffset(ensureDefined(bars));
+		}
+		this._visibleRangeInvalidated = true;
+	}
+
+	private _setLogicalOffset(offset: number): void {
+		if (this._slots !== null && (this._options.rightOffsetPixels !== undefined || this._pixelMargin !== undefined)) {
+			this._pixelMargin = this._slotRightOffsetFor(offset, this.baseIndex()) * this._barSpacing;
+		} else {
+			this._rightOffset = offset;
+		}
 	}
 
 	private _applyBarSpacing(newBarSpacing: number): void {
 		const oldBarSpacing = this._barSpacing;
 		this._setBarSpacing(newBarSpacing);
-		if (this._options.rightOffsetPixels !== undefined && oldBarSpacing !== 0 && (this._slots === null || this._width > 0)) {
-			// Preserve the right offset in pixels when zooming.
-			this._rightOffset = this._rightOffsetForSlotOffset(this.slotRightOffset() * oldBarSpacing / this._barSpacing);
+		if (this._slots === null && this._options.rightOffsetPixels !== undefined && oldBarSpacing !== 0) {
+			this._rightOffset = this._rightOffset * oldBarSpacing / this._barSpacing;
 		}
-		this._correctOffset();
 	}
 
-	private _applyVisibleRange(range: RangeImpl<TimePointIndex>, defaultOffset?: Pick<HorzScaleOptions, 'rightOffset' | 'rightOffsetPixels'>): void {
+	private _fitContent(spacing?: number): boolean {
+		const first = this._firstIndex();
+		const last = this._lastIndex();
+		if (first === null || last === null) {
+			return false;
+		}
+		if (this._slots !== null && this._options.fixRightEdge) {
+			return this._applyVisibleRange(new RangeImpl(first, this._fixedRightIndex(last)), false, spacing);
+		}
+		const pixels = this._options.rightOffsetPixels;
+		const usePixels = this._slots === null ? !!pixels : pixels !== undefined;
+		const extraBars = usePixels ? 0 : this._options.rightOffset || 0;
+		return this._applyVisibleRange(new RangeImpl(first, last + extraBars as TimePointIndex), true, spacing);
+	}
+
+	private _applyVisibleRange(range: RangeImpl<TimePointIndex>, applyDefaultOffset: boolean = false, spacing?: number): boolean {
 		const length = this._slots === null
 			? range.count()
 			: this._slots.logicalToSlot(range.right() + 0.5) - this._slots.logicalToSlot(range.left() - 0.5);
-		const pixelOffset = defaultOffset?.rightOffsetPixels;
-		this._setBarSpacing((this._width - (pixelOffset || 0)) / length);
-		if (this._slots !== null && pixelOffset !== undefined) {
-			this._setRightOffset(undefined, pixelOffset);
-			return;
-		}
-		this._rightOffset = range.right() - this.baseIndex();
-		if (defaultOffset !== undefined) {
-			this._rightOffset = pixelOffset ? pixelOffset / this.barSpacing() : defaultOffset.rightOffset;
-		}
-		this._correctOffset();
-		this._visibleRangeInvalidated = true;
+		const pixels = applyDefaultOffset ? this._options.rightOffsetPixels : undefined;
+		this._setBarSpacing(spacing ?? (this._width - (pixels || 0)) / length);
+		const bars = applyDefaultOffset ? this._options.rightOffset : range.right() - this.baseIndex();
+		this._applyRightOffset(this._slots === null && pixels ? pixels / this._barSpacing : bars, pixels);
+		return true;
 	}
 
 	private _recalculateViewport(): void {
@@ -1314,51 +1335,34 @@ export class TimeScale<HorzScaleItem> implements ITimeScale {
 		this._visibleRangeInvalidated = true;
 		this._resetTimeMarksCache();
 		this._correctOffset();
-		this._model.recalculateAllPanes();
-		this._model.lightUpdate();
+		this._recalculateViewport();
 	}
 
 	private _syncSlotLayout(firstChangedIndex: number): void {
-		if (this._slots === null && this._slotWidthByKey.size === 0) {
+		if (this._slotWidthByKey.size === 0) {
+			if (this._slots !== null) {
+				this._slots = null;
+				if (this._width > 0) {
+					this._setBarSpacing(this._barSpacing);
+				}
+				this._rightOffset = this.rightOffset();
+				this._pixelMargin = undefined;
+			}
 			return;
 		}
-		const previousOffsetPixels = this.rightOffsetPixels(true);
-		const replayLayout = this._pendingFitLayout !== undefined;
-		if (this._slotWidthByKey.size === 0) {
-			this._slots = null;
-		} else {
-			if (this._slots === null) {
-				this._captureScrollKineticAnchor();
+		if (this._slots === null) {
+			this._captureScrollKineticAnchor();
+			this._slots = new SlotLayout();
+			firstChangedIndex = 0;
+			this._awaitingFirstSlotViewport ||= this._width === 0;
+			if (this._width > 0 && this._options.rightOffsetPixels !== undefined) {
+				this._pixelMargin = this._rightOffset * this._barSpacing;
 			}
-			if (this._slots === null || replayLayout) {
-				this._slots = new SlotLayout();
-				firstChangedIndex = 0;
-			}
-			const points = this._points;
-			this._slots.update(points.length, firstChangedIndex, (index: number) =>
-				this._slotWidthByKey.get(this._horzScaleBehavior.key(points[index].time)) ?? defaultSlotWidth
-			);
 		}
-		if (replayLayout) {
-			const slots = this._slots;
-			const preservePixelOffset = this._options.rightOffsetPixels !== undefined;
-			this._queueViewportChange(() => {
-				const offsetPixels = preservePixelOffset && this._barSpacing !== 0 ? this.slotRightOffset() * this._barSpacing : undefined;
-				this._slots = slots;
-				this._applySlotLayoutSpacing(offsetPixels);
-				this._correctOffset();
-			});
-		}
-		if (this._width > 0) {
-			this._applySlotLayoutSpacing(previousOffsetPixels);
-		}
-	}
-
-	private _applySlotLayoutSpacing(previousOffsetPixels: number | undefined): void {
+		this._slots.update(this._points.length, firstChangedIndex, (index: number) =>
+			this._slotWidthByKey.get(this._horzScaleBehavior.key(this._points[index].time)) ?? defaultSlotWidth
+		);
 		this._setBarSpacing(this._barSpacing);
-		if (previousOffsetPixels !== undefined) {
-			this._rightOffset = this._rightOffsetForSlotOffset(previousOffsetPixels / this._barSpacing);
-		}
 	}
 
 	private _setBarSpacing(newBarSpacing: number): void {
@@ -1475,17 +1479,13 @@ export class TimeScale<HorzScaleItem> implements ITimeScale {
 		if (this._slots !== null && this._width === 0) {
 			return;
 		}
-		// block scrolling of to past
-		const minRightOffset = this._minRightOffset();
-		if (minRightOffset !== null && this._rightOffset < minRightOffset) {
-			this._rightOffset = minRightOffset;
-			this._visibleRangeInvalidated = true;
-		}
-
-		// block scrolling of to future
-		const maxRightOffset = this._maxRightOffset();
-		if (this._rightOffset > maxRightOffset) {
-			this._rightOffset = maxRightOffset;
+		const offset = this.rightOffset();
+		const min = this._minRightOffset();
+		const max = this._maxRightOffset();
+		const afterMin = min !== null && offset < min ? min : offset;
+		const corrected = afterMin > max ? max : afterMin;
+		if (!Object.is(corrected, offset)) {
+			this._setLogicalOffset(corrected);
 			this._visibleRangeInvalidated = true;
 		}
 	}
@@ -1605,7 +1605,7 @@ export class TimeScale<HorzScaleItem> implements ITimeScale {
 			// a bar count is not a distance with slot widths; the minimum offset pins the first bar exactly
 			const leftEdgeOffset = this._slots === null
 				? this._rightOffset - delta - 1
-				: this._minRightOffset() ?? this._rightOffset;
+				: this._minRightOffset() ?? this.rightOffset();
 			this.setRightOffset(leftEdgeOffset);
 		}
 
@@ -1642,11 +1642,8 @@ export class TimeScale<HorzScaleItem> implements ITimeScale {
 
 	private _checkRightOffsetPixels(options: DeepPartial<HorzScaleOptions>): void {
 		if (options.rightOffsetPixels !== undefined) {
-			// A pixel-only request must survive clearing the slot layout before the draw pass.
-			const offset = this._slots !== null && this._width === 0
-				? undefined
-				: options.rightOffsetPixels / (options.barSpacing || this._barSpacing);
-			this._model.setRightOffset(offset, options.rightOffsetPixels);
+			const bars = this._slots === null ? options.rightOffsetPixels / (options.barSpacing || this._barSpacing) : undefined;
+			this._model.setRightOffset(bars, options.rightOffsetPixels);
 		}
 	}
 }
