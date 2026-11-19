@@ -1348,7 +1348,11 @@ export class TimeScale<HorzScaleItem> implements ITimeScale {
 		this._visibleRangeInvalidated = true;
 		this._rightOffset = rightOffsetBefore - slotShift;
 		this._correctOffset();
-		this._appendCompensation += rightOffsetBefore - this._rightOffset;
+		// not finite while the offset awaits its first clamp
+		const applied = rightOffsetBefore - this._rightOffset;
+		if (Number.isFinite(applied)) {
+			this._appendCompensation += applied;
+		}
 		this._model.recalculateAllPanes();
 		this._model.lightUpdate();
 	}

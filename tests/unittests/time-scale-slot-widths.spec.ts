@@ -1229,6 +1229,21 @@ describe('TimeScale slot widths', () => {
 		}
 	});
 
+	it('keeps the kinetic sample finite after a width edit on a chart shown empty after an unsized fit', () => {
+		const options = chartOptionsDefaults<Time>();
+		options.timeScale = { ...options.timeScale, rightOffsetPixels: -50 };
+		const model = new ChartModel<Time>(() => {}, options, behavior);
+		const ts = model.timeScale();
+		model.updateTimeScale(99 as TimePointIndex, points(range(100)), 0);
+		ts.fitContent();
+		model.updateTimeScale(null, [], 0);
+		ts.setWidth(paneWidth);
+		ts.setSlotWidths([{ time: internalTime(50), width: 3 }]);
+		model.updateTimeScale(99 as TimePointIndex, points(range(100)), 0);
+		expect(Number.isFinite(ts.rightOffset())).to.be.equal(true);
+		expect(Number.isFinite(ts.kineticScrollPosition())).to.be.equal(true);
+	});
+
 	it('keeps a logical range set on an empty chart over the right offset option', () => {
 		const model = chartModel({ rightOffset: -3 });
 		const ts = model.timeScale();
