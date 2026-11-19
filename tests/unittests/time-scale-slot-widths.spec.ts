@@ -19,6 +19,7 @@ import { InternalHorzScaleItem } from '../../src/model/ihorz-scale-behavior';
 import { ITimeScaleAnimation } from '../../src/model/invalidate-mask';
 import { ISeries } from '../../src/model/iseries';
 import { LocalizationOptions } from '../../src/model/localization-options';
+import { RangeImpl } from '../../src/model/range-impl';
 import { Series } from '../../src/model/series';
 import { SeriesLinePaneView } from '../../src/model/series/line-pane-view';
 import { maxSlotWidth, minSlotWidth, normalizeSlotWidth, SlotLayout } from '../../src/model/slot-layout';
@@ -305,6 +306,36 @@ describe('TimeScale slot widths', () => {
 		let previous = beforeChange;
 		for (const time of [960, 980, 1000]) {
 			applyFrame(ts, animations[0], start + time);
+			expect(ts.rightOffset()).to.be.at.least(previous - precision);
+			expect(ts.rightOffset()).to.be.at.most(-20 + precision);
+			previous = ts.rightOffset();
+		}
+		expect(previous).to.be.closeTo(-20, precision);
+	});
+
+	it('never passes the target when the widths are cleared between animation frames', (t: TestContext) => {
+		const start = 1000;
+		const duration = 1000;
+		let now = start;
+		t.mock.method(performance, 'now', () => now);
+		const { model, animations } = animatedModel();
+		const timestamps = range(barCount);
+		const ts = createTimeScale({}, timestamps, model);
+		ts.setSlotWidths(timestamps.map((time: number) => ({ time: internalTime(time), width: 2 })));
+		ts.setRightOffset(-40);
+		ts.scrollToOffsetAnimated(-20, duration);
+
+		applyFrame(ts, animations[0], start + 940);
+		let previous = ts.rightOffset();
+		// well after the frame that was drawn, and before the next one
+		now = start + 995;
+		ts.setSlotWidths([]);
+		expect(ts.rightOffset()).to.be.closeTo(previous, precision);
+		// the animation still passes through the drawn position at the drawn frame's time
+		expect(animations[0].getPosition(start + 940)).to.be.closeTo(ts.slotRightOffset(), precision);
+		for (const time of [960, 980, 1000]) {
+			now = start + time;
+			applyFrame(ts, animations[0], now);
 			expect(ts.rightOffset()).to.be.at.least(previous - precision);
 			expect(ts.rightOffset()).to.be.at.most(-20 + precision);
 			previous = ts.rightOffset();
@@ -814,6 +845,78 @@ describe('TimeScale slot widths', () => {
 		model.updateTimeScale(barCount - 1 as TimePointIndex, points(replacement), 0);
 		expect(ts.barSpacing()).to.be.closeTo(5, precision);
 		expect(ts.conflationFactor()).to.be.equal(1);
+	});
+
+	it('keeps the bar spacing when widths and data arrive before the first sizing', () => {
+		const options = chartOptionsDefaults<Time>();
+		const flows: ((model: ChartModel<Time>) => void)[] = [
+			(model: ChartModel<Time>) => {
+				model.timeScale().setSlotWidths([{ time: internalTime(3), width: 4 }]);
+				model.updateTimeScale(19 as TimePointIndex, points(range(20)), 0);
+			},
+			(model: ChartModel<Time>) => {
+				model.updateTimeScale(19 as TimePointIndex, points(range(20)), 0);
+				model.timeScale().setSlotWidths([{ time: internalTime(3), width: 4 }]);
+				model.updateTimeScale(20 as TimePointIndex, points(range(21)), 20);
+			},
+		];
+		for (const flow of flows) {
+			const model = new ChartModel<Time>(() => {}, options, behavior);
+			flow(model);
+			model.timeScale().setWidth(paneWidth);
+			expect(model.timeScale().barSpacing()).to.be.equal(options.timeScale.barSpacing);
+		}
+	});
+
+	it('counts a scrolled-back offset in bars while the chart is empty', () => {
+		const timestamps = range(20);
+		const wide = [{ time: internalTime(19), width: 10 }, { time: internalTime(18), width: 4 }];
+		const whileEmpty: ((ts: TimeScale<Time>) => void)[] = [
+			(ts: TimeScale<Time>) => ts.setSlotWidths([]),
+			(ts: TimeScale<Time>) => ts.setSlotWidths(wide),
+			(ts: TimeScale<Time>) => { ts.setSlotWidths([]); ts.setSlotWidths(wide); },
+		];
+		for (const initialWidths of [[], wide]) {
+			whileEmpty.forEach((change: (ts: TimeScale<Time>) => void, i: number) => {
+				const model = chartModel({});
+				const ts = model.timeScale();
+				model.updateTimeScale(19 as TimePointIndex, points(timestamps), 0);
+				ts.setSlotWidths(initialWidths);
+				ts.setRightOffset(-5);
+
+				model.updateTimeScale(null, [], 0);
+				expect(ts.rightOffset()).to.be.closeTo(-5, precision);
+				change(ts);
+				expect(ts.rightOffset()).to.be.closeTo(-5, precision);
+				model.updateTimeScale(19 as TimePointIndex, points(timestamps), 0);
+				expect(ts.rightOffset(), `${initialWidths.length} widths, change ${i}`).to.be.closeTo(-5, precision);
+			});
+		}
+	});
+
+	it('counts an animated scroll that ends on an empty chart in bars', (t: TestContext) => {
+		const start = 1000;
+		const duration = 1000;
+		t.mock.method(performance, 'now', () => start);
+		const { model, animations } = animatedModel();
+		const ts = createTimeScale({}, [], model);
+		ts.setBaseIndex(null);
+		ts.setSlotWidths([{ time: internalTime(19), width: 10 }]);
+		ts.scrollToOffsetAnimated(-10, duration);
+		applyFrame(ts, animations[0], start + duration);
+
+		ts.update(points(range(20)), 0);
+		ts.setBaseIndex(19 as TimePointIndex);
+		expect(ts.rightOffset()).to.be.closeTo(-10, precision);
+	});
+
+	it('keeps a logical range set on an empty chart over the right offset option', () => {
+		const model = chartModel({ rightOffset: -3 });
+		const ts = model.timeScale();
+		ts.setSlotWidths([{ time: internalTime(19), width: 10 }]);
+		ts.setVisibleRange(new RangeImpl(-30 as TimePointIndex, -6 as TimePointIndex));
+		model.updateTimeScale(19 as TimePointIndex, points(range(20)), 0);
+		expect(ts.rightOffset()).to.be.closeTo(-6, precision);
 	});
 
 	it('reports an unparseable time as a RangeError through the API', () => {

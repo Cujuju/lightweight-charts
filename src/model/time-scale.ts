@@ -29,10 +29,10 @@ import { TimeScaleVisibleRange } from './time-scale-visible-range';
 const defaultTickMarkMaxCharacterLength = 8;
 
 /**
- * How far, in default-width slots, the right offset may sit above its minimum and still count as pinned to the left edge.
+ * How far the right offset may sit above its minimum, relative to that minimum, and still count as pinned to the left edge.
  * Append and width compensation reach the minimum by arithmetic, a few ulps off the clamp value.
  */
-const pinnedLeftEdgeTolerance = 1e-9;
+const pinnedLeftEdgeRelativeTolerance = 1e-9;
 
 const enum Constants {
 	DefaultAnimationDuration = 400,
@@ -378,7 +378,8 @@ export class TimeScale<HorzScaleItem> implements ITimeScale {
 	private _baseEdgeBeforeUpdate: number | null = null;
 	// The right offset in bars before update() changed the points; null once the base index is set.
 	private _barOffsetBeforeUpdate: number | null = null;
-	// A right offset given in bars while there is no base index, so no slots to convert it against yet.
+	// A right offset that counts bars while there is no base index, so no slots to convert it against yet.
+	// Without a base index that is any offset given in bars and any scrolled-back (negative) offset.
 	private _pendingBarOffset: number | null;
 
 	private readonly _horzScaleBehavior: IHorzScaleBehavior<HorzScaleItem>;
@@ -555,7 +556,7 @@ export class TimeScale<HorzScaleItem> implements ITimeScale {
 		// With slot widths the range's left edge carries rounding error, so compare against the clamp value.
 		const leftEdgePinned = previousVisibleRange !== null && (this._slots === null
 			? previousVisibleRange.left() <= 0
-			: this._rightOffset - (this._minRightOffset() ?? -Infinity) <= pinnedLeftEdgeTolerance);
+			: this._isPinnedToMinRightOffset());
 
 		const oldWidth = this._width;
 		this._width = newWidth;
@@ -645,8 +646,8 @@ export class TimeScale<HorzScaleItem> implements ITimeScale {
 
 	/** Sets the right offset in default-width slots, the unit kinetic and animated scrolling run in. */
 	public setSlotRightOffset(slotOffset: number): void {
-		this._pendingBarOffset = null;
 		this._applySlotRightOffset(slotOffset);
+		this._pendingBarOffset = this._emptyScaleBarOffset();
 	}
 
 	/**
@@ -826,21 +827,22 @@ export class TimeScale<HorzScaleItem> implements ITimeScale {
 		this._baseEdgeBeforeUpdate = null;
 		const barOffsetBeforeUpdate = this._barOffsetBeforeUpdate;
 		this._barOffsetBeforeUpdate = null;
-		const pendingBarOffset = this._pendingBarOffset;
-		if (baseIndex === null) {
+		if (baseIndex === null && this._baseIndexOrNull !== null && this._rightOffset < 0) {
 			// A scrolled-back offset counts bars again once the slots under it are gone; a gap past the last bar stays as it is.
-			if (this._slots !== null && this._baseIndexOrNull !== null && this._rightOffset < 0) {
-				this._pendingBarOffset = barOffsetBeforeUpdate;
-			}
-		} else {
-			this._pendingBarOffset = null;
+			this._rightOffset = barOffsetBeforeUpdate ?? this.rightOffset();
 		}
 		this._baseIndexOrNull = baseIndex;
-		if (this._slots !== null) {
-			if (baseIndex !== null && pendingBarOffset !== null) {
-				this._rightOffset = this._slotOffsetForBars(pendingBarOffset);
+		if (baseIndex === null) {
+			this._pendingBarOffset = this._emptyScaleBarOffset();
+		} else {
+			if (this._slots !== null && this._pendingBarOffset !== null) {
+				this._rightOffset = this._slotOffsetForBars(this._pendingBarOffset);
 			}
-			// the fixed-edge minimum spacing depends on the slots of the new points; this also refreshes the conflation factor
+			this._pendingBarOffset = null;
+		}
+		if (this._slots !== null && this._width !== 0) {
+			// The fixed-edge minimum spacing depends on the slots of the new points; this also refreshes the conflation factor.
+			// Before the first sizing there is no width to clamp against.
 			this._setBarSpacing(this._barSpacing);
 		}
 		this._correctOffset();
@@ -998,6 +1000,7 @@ export class TimeScale<HorzScaleItem> implements ITimeScale {
 		let source = this._rightOffset;
 		let target = this._slotOffsetForBars(offset);
 		let lastProgress = 0;
+		let hadSlots = this._slots !== null;
 		const animationStart = performance.now();
 
 		this._model.setTimeScaleAnimation({
@@ -1016,8 +1019,11 @@ export class TimeScale<HorzScaleItem> implements ITimeScale {
 				return finishAnimation ? target : source + (target - source) * animationProgress;
 			},
 			shift: (delta: number) => {
-				// A slot layout change moves the target as well, by an amount measured at the last applied frame.
-				const progress = this._slots === null ? (performance.now() - animationStart) / animationDuration : lastProgress;
+				// A slot layout change, clearing the widths included, moves the target as well,
+				// by an amount measured at the last applied frame.
+				const slotTimed = hadSlots || this._slots !== null;
+				hadSlots = this._slots !== null;
+				const progress = slotTimed ? lastProgress : (performance.now() - animationStart) / animationDuration;
 				if (progress < 1) {
 					const newTarget = this._slotOffsetForBars(offset);
 					source += ((target - newTarget) * progress - delta) / (1 - progress);
@@ -1080,6 +1086,7 @@ export class TimeScale<HorzScaleItem> implements ITimeScale {
 				? pixelOffset / this.barSpacing()
 				: this._slotOffsetForBars(this._options.rightOffset);
 		}
+		this._pendingBarOffset = this._emptyScaleBarOffset();
 		this._correctOffset();
 		this._visibleRangeInvalidated = true;
 		this._model.recalculateAllPanes();
@@ -1203,6 +1210,17 @@ export class TimeScale<HorzScaleItem> implements ITimeScale {
 		// JavaScript uses very strange rounding
 		// we need rounding to avoid problems with calculation errors
 		return Math.round(index * 1000000) / 1000000;
+	}
+
+	private _isPinnedToMinRightOffset(): boolean {
+		const minOffset = this._minRightOffset();
+		return minOffset !== null
+			&& this._rightOffset - minOffset <= pinnedLeftEdgeRelativeTolerance * Math.max(1, Math.abs(minOffset));
+	}
+
+	/** Without a base index a scrolled-back offset counts bars; with one, or past the last bar, nothing is pending. */
+	private _emptyScaleBarOffset(): number | null {
+		return this._baseIndexOrNull === null && this._rightOffset < 0 ? this._rightOffset : null;
 	}
 
 	private _applySlotRightOffset(slotOffset: number): void {
