@@ -848,10 +848,8 @@ export class TimeScale<HorzScaleItem> implements ITimeScale {
 			this._rightOffset = this._slotOffsetOnBaseIndex(barOffsetBefore);
 		}
 		this._shiftTransitions(slotOffsetBefore - this._rightOffset);
-		if (this._slots !== null && this._width !== 0) {
-			// The fixed-edge minimum spacing depends on the slots of the new points; this also refreshes the conflation factor.
-			// Before the first sizing there is no width to clamp against.
-			this._setBarSpacing(this._barSpacing);
+		if (this._slots !== null) {
+			this._refreshSlotBarSpacing();
 		}
 		this._correctOffset();
 
@@ -876,7 +874,7 @@ export class TimeScale<HorzScaleItem> implements ITimeScale {
 		this._barOffsetBeforeUpdate = null;
 		this._visibleRangeInvalidated = true;
 		this._baseIndexOrNull = baseIndex;
-		this._setBarSpacing(this._barSpacing);
+		this._refreshSlotBarSpacing();
 		// A scrolled-back view keeps the logical index at the pane's right edge, as without widths.
 		// With the gap past the last bar in view, the edge stays where it is: shift by the slots of the `delta` new last bars.
 		// One clamp follows, because the offset limits depend on the widths of the new last bars.
@@ -1271,6 +1269,16 @@ export class TimeScale<HorzScaleItem> implements ITimeScale {
 		return slots.logicalToSlot(baseIndex + bars + 0.5) - slots.start(baseIndex + 1);
 	}
 
+	/**
+	 * Re-clamps the bar spacing after the slots changed: the fixed-edge minimum depends on them, and the conflation factor
+	 * follows the spacing. Not without points or before the first sizing, where there is nothing to clamp against.
+	 */
+	private _refreshSlotBarSpacing(): void {
+		if (this._width !== 0 && this._points.length !== 0) {
+			this._setBarSpacing(this._barSpacing);
+		}
+	}
+
 	/** How many slots lower the right offset must go to sit `bars` bars from the base; 0 while the offset is not finite. */
 	private _slotShiftToBars(bars: number): number {
 		const slotShift = this._rightOffset - this._slotOffsetForBars(bars);
@@ -1378,8 +1386,7 @@ export class TimeScale<HorzScaleItem> implements ITimeScale {
 			this._rightOffset -= slotShift;
 			return;
 		}
-		// the fixed-edge minimum spacing depends on the widths; this also refreshes the conflation factor
-		this._setBarSpacing(this._barSpacing);
+		this._refreshSlotBarSpacing();
 		this._compensateRightOffset(slotShift);
 		this._model.shiftTimeScaleAnimation(slotShift);
 	}

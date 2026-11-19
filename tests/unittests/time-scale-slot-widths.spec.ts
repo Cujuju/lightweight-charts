@@ -1205,6 +1205,30 @@ describe('TimeScale slot widths', () => {
 		}
 	});
 
+	it('keeps a zoomed-out bar spacing when the data is cleared and loaded again with both edges fixed', () => {
+		const count = 4000;
+		const timestamps = range(count);
+		const widths = [{ time: internalTime(10), width: 2 }];
+		const whileEmpty: ((ts: TimeScale<Time>) => void)[] = [
+			() => {},
+			(ts: TimeScale<Time>) => { ts.setSlotWidths([]); ts.setSlotWidths(widths); },
+		];
+		for (const change of whileEmpty) {
+			const model = chartModel({ fixLeftEdge: true, fixRightEdge: true, minBarSpacing: 0.5 });
+			const ts = model.timeScale();
+			model.updateTimeScale(count - 1 as TimePointIndex, points(timestamps), 0);
+			ts.setSlotWidths(widths);
+			ts.setBarSpacing(0.1);
+			const spacing = ts.barSpacing();
+			expect(spacing).to.be.lessThan(0.5);
+
+			model.updateTimeScale(null, [], 0);
+			change(ts);
+			model.updateTimeScale(count - 1 as TimePointIndex, points(timestamps), 0);
+			expect(ts.barSpacing()).to.be.closeTo(spacing, precision);
+		}
+	});
+
 	it('keeps a logical range set on an empty chart over the right offset option', () => {
 		const model = chartModel({ rightOffset: -3 });
 		const ts = model.timeScale();
