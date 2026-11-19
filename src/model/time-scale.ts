@@ -842,13 +842,10 @@ export class TimeScale<HorzScaleItem> implements ITimeScale {
 			this._emptyScaleOffsetInBars = false;
 		}
 		this._baseIndexOrNull = baseIndex;
-		if (baseIndex !== null && !hadBaseIndex && this._slots !== null && (this._emptyScaleOffsetInBars || this._rightOffset < 0)) {
-			this._rightOffset = this._slotOffsetForBars(this._rightOffset);
+		if (baseIndex !== null && this._slots !== null) {
+			this._rightOffset = this._slotOffsetOnBaseIndex(hadBaseIndex, barOffsetBeforeUpdate);
 		}
-		if (this._rightOffset !== slotOffsetBefore) {
-			// the unit changed under a running animation
-			this._model.shiftTimeScaleAnimation(slotOffsetBefore - this._rightOffset);
-		}
+		this._shiftTransitions(slotOffsetBefore - this._rightOffset);
 		if (this._slots !== null && this._width !== 0) {
 			// The fixed-edge minimum spacing depends on the slots of the new points; this also refreshes the conflation factor.
 			// Before the first sizing there is no width to clamp against.
@@ -1266,6 +1263,32 @@ export class TimeScale<HorzScaleItem> implements ITimeScale {
 		}
 		const baseIndex = this.baseIndex();
 		return slots.slotToLogical(slots.start(baseIndex + 1) + slotOffset) - 0.5 - baseIndex;
+	}
+
+	/** The right offset in slots under a base index that was just set, with slot widths. */
+	private _slotOffsetOnBaseIndex(hadBaseIndex: boolean, barOffsetBeforeUpdate: number | null): number {
+		if (!hadBaseIndex) {
+			// until now the offset had no slots under it
+			return this._emptyScaleOffsetInBars || this._rightOffset < 0
+				? this._slotOffsetForBars(this._rightOffset)
+				: this._rightOffset;
+		}
+		// A scrolled-back offset keeps its bar count from the new base, as without widths; a gap past the last bar stays.
+		return barOffsetBeforeUpdate !== null && barOffsetBeforeUpdate < 0
+			? this._slotOffsetForBars(barOffsetBeforeUpdate)
+			: this._rightOffset;
+	}
+
+	/** Tells a drag, a kinetic scroll and an animation that the offset was re-expressed `slotShift` slots lower. */
+	private _shiftTransitions(slotShift: number): void {
+		if (slotShift === 0) {
+			return;
+		}
+		if (this._commonTransitionStartState !== null) {
+			this._commonTransitionStartState.rightOffset -= slotShift;
+		}
+		this._appendCompensation += slotShift;
+		this._model.shiftTimeScaleAnimation(slotShift);
 	}
 
 	/**

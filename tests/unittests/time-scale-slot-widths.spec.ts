@@ -966,6 +966,28 @@ describe('TimeScale slot widths', () => {
 		expect(ts.conflationFactor()).to.be.equal(1);
 	});
 
+	it('keeps following new bars when the last bar is wide and partly clipped', () => {
+		const model = chartModel({ barSpacing: 6 });
+		const ts = model.timeScale();
+		model.updateTimeScale(19 as TimePointIndex, points(range(20)), 0);
+		ts.setSlotWidths([{ time: internalTime(19), width: 10 }]);
+		ts.setRightOffset(-0.3);
+		for (let count = 21; count <= 23; count++) {
+			model.updateTimeScale(count - 1 as TimePointIndex, points(range(count)), count - 1);
+			expect(ts.rightOffset(), `${count} bars`).to.be.closeTo(-0.3, precision);
+		}
+	});
+
+	it('keeps the scroll position in bars when the data is replaced', () => {
+		const model = chartModel({});
+		const ts = model.timeScale();
+		model.updateTimeScale(barCount - 1 as TimePointIndex, points(range(barCount)), 0);
+		ts.setSlotWidths([{ time: internalTime(barCount - 1), width: 10 }, { time: internalTime(barCount - 2), width: 4 }]);
+		ts.setRightOffset(-5);
+		model.updateTimeScale(barCount - 1 as TimePointIndex, points(range(barCount, 1000)), 0);
+		expect(ts.rightOffset()).to.be.closeTo(-5, precision);
+	});
+
 	it('keeps a logical range set on an empty chart over the right offset option', () => {
 		const model = chartModel({ rightOffset: -3 });
 		const ts = model.timeScale();
