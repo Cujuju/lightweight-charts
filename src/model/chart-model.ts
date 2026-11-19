@@ -704,7 +704,7 @@ export class ChartModel<HorzScaleItem> implements IDestroyable, IChartModelBase 
 
 	public setWidth(width: number): void {
 		this._width = width;
-		this._timeScale.setWidth(this._width);
+		this._timeScale.setWidth(this._width, false);
 		this._panes.forEach((pane: Pane) => pane.setWidth(width));
 		this.recalculateAllPanes();
 	}
@@ -954,6 +954,7 @@ export class ChartModel<HorzScaleItem> implements IDestroyable, IChartModelBase 
 	public updateTimeScale(newBaseIndex: TimePointIndex | null, newPoints?: readonly TimeScalePoint[], firstChangedPointIndex?: number): void {
 		const oldFirstTime = this._timeScale.indexToTime(0 as TimePointIndex);
 
+		const offsetPixels = this._timeScale.rightOffsetPixels();
 		if (newPoints !== undefined && firstChangedPointIndex !== undefined) {
 			this._timeScale.update(newPoints, firstChangedPointIndex);
 		}
@@ -985,7 +986,8 @@ export class ChartModel<HorzScaleItem> implements IDestroyable, IChartModelBase 
 			}
 		}
 
-		this._timeScale.setBaseIndex(newBaseIndex);
+		// Resolve the captured margin from the new base when the viewport follows it.
+		this._timeScale.setBaseIndex(newBaseIndex, offsetPixels);
 	}
 
 	public recalculatePane(pane: Pane | null): void {
@@ -1094,9 +1096,9 @@ export class ChartModel<HorzScaleItem> implements IDestroyable, IChartModelBase 
 		this._invalidate(mask);
 	}
 
-	public setRightOffset(offset: number): void {
+	public setRightOffset(offset: number | undefined, offsetPixels?: number): void {
 		const mask = InvalidateMask.light();
-		mask.setRightOffset(offset);
+		mask.setRightOffset(offset, offsetPixels);
 		this._invalidate(mask);
 	}
 

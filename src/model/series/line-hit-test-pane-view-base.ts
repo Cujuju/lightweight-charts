@@ -12,6 +12,14 @@ export abstract class LineHitTestPaneViewBase<
 	ItemType extends PricedValue & TimedValue,
 	TRenderer extends IPaneRenderer
 > extends LinePaneViewBase<TSeriesType, ItemType, TRenderer> {
+	protected _lineBarWidth(): number {
+		const timeScale = this._model.timeScale();
+		const range = this._itemsVisibleRange;
+		return range !== null && range.to - range.from === 1
+			? timeScale.slotWidth(this._items[range.from].time)
+			: timeScale.barSpacing();
+	}
+
 	protected override _hitTestImpl(x: Coordinate, y: Coordinate): InternalHitTestCandidate | null {
 		const options = this._series.options();
 		return hitTestLineSeries(
@@ -22,7 +30,7 @@ export abstract class LineHitTestPaneViewBase<
 			options.lineType,
 			options.lineVisible ? options.lineWidth : 1,
 			options.pointMarkersVisible ? (options.pointMarkersRadius || options.lineWidth / 2 + 2) : undefined,
-			this._model.timeScale().barSpacing(),
+			this._lineBarWidth(),
 			options.hitTestTolerance
 		);
 	}

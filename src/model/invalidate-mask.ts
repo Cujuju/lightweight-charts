@@ -42,7 +42,8 @@ export interface TimeScaleFitContentInvalidation {
 
 export interface TimeScaleApplyRightOffsetInvalidation {
 	type: TimeScaleInvalidationType.ApplyRightOffset;
-	value: number;
+	value: number | undefined;
+	offsetPixels?: number;
 }
 
 export interface TimeScaleApplyBarSpacingInvalidation {
@@ -146,9 +147,9 @@ export class InvalidateMask {
 		this._timeScaleInvalidations.push({ type: TimeScaleInvalidationType.ApplyBarSpacing, value: barSpacing });
 	}
 
-	public setRightOffset(offset: number): void {
+	public setRightOffset(offset: number | undefined, offsetPixels?: number): void {
 		this.stopTimeScaleAnimation();
-		this._timeScaleInvalidations.push({ type: TimeScaleInvalidationType.ApplyRightOffset, value: offset });
+		this._timeScaleInvalidations.push({ type: TimeScaleInvalidationType.ApplyRightOffset, value: offset, offsetPixels });
 	}
 
 	public timeScaleInvalidations(): readonly TimeScaleInvalidation[] {
@@ -186,7 +187,7 @@ export class InvalidateMask {
 				this.setBarSpacing(invalidation.value);
 				break;
 			case TimeScaleInvalidationType.ApplyRightOffset:
-				this.setRightOffset(invalidation.value);
+				this.setRightOffset(invalidation.value, invalidation.offsetPixels);
 				break;
 			case TimeScaleInvalidationType.Reset:
 				this.resetTimeScale();

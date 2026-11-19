@@ -23,6 +23,7 @@ interface MarksCache {
 	maxIndexesPerMark: number;
 	indicesWithDataId: number;
 	checkIndicesForData: boolean;
+	slots: SlotLayout | null;
 	slotsRevision: number | null;
 	marks: readonly TickMark[];
 }
@@ -67,11 +68,13 @@ export class TickMarks<HorzScaleItem> {
 			this._cache.maxIndexesPerMark !== maxIndexesPerMark ||
 			indicesWithDataId !== this._cache.indicesWithDataId ||
 			checkIndicesForData !== this._cache.checkIndicesForData ||
+			slots !== this._cache.slots ||
 			slotsRevision !== this._cache.slotsRevision
 		) {
 			this._cache = {
 				indicesWithDataId,
 				checkIndicesForData,
+				slots,
 				slotsRevision,
 				marks: this._buildMarksImpl(maxIndexesPerMark, checkIndicesForData, indicesWithDataMap, slots),
 				maxIndexesPerMark,

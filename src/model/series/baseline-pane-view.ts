@@ -55,8 +55,6 @@ export class SeriesBaselinePaneView extends LineHitTestPaneViewBase<'Baseline', 
 
 		const options = this._series.options();
 		const baseLevelCoordinate = this._series.priceScale().priceToCoordinate(options.baseValue.price, firstValue.value);
-		const barWidth = this._model.timeScale().barSpacing();
-
 		if (this._itemsVisibleRange === null || this._items.length === 0) {
 			return;
 		}
@@ -78,6 +76,7 @@ export class SeriesBaselinePaneView extends LineHitTestPaneViewBase<'Baseline', 
 			}
 		}
 
+		const barWidth = this._lineBarWidth();
 		this._baselineAreaRenderer.setData({
 			items: this._items,
 			lineWidth: options.lineWidth,

@@ -72,7 +72,8 @@ export class VariableWidthCandles {
 	/** Adds or replaces the last candle, e.g. a still-forming bar. */
 	public update(candle: VolumeCandle): void {
 		const last = this._candles[this._candles.length - 1];
-		if (last !== undefined && last.time === candle.time) {
+		const behavior = this._chart.horzBehaviour();
+		if (last !== undefined && behavior.key(last.time) === behavior.key(candle.time)) {
 			this._candles[this._candles.length - 1] = candle;
 		} else {
 			this._candles.push(candle);
