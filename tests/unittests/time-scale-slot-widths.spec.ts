@@ -702,6 +702,18 @@ describe('TimeScale slot widths', () => {
 		expect(cleared.visibleStrictRange()?.left()).to.equal(0);
 	});
 
+	it('caps a fit margin in bars when all slots fill the pane at minimum spacing', () => {
+		const width = 500;
+		const timestamps = range(500);
+		const ts = createTimeScale({ rightOffset: 20 }, timestamps);
+		ts.setWidth(width);
+		ts.setSlotWidths(timestamps.map((time: number) => ({ time: internalTime(time), width: time % 2 === 0 ? 1 : 3 })));
+		ts.fitContent();
+
+		expect(ts.barSpacing()).to.equal(timeScaleOptionsDefaults.minBarSpacing);
+		expect(ts.visibleStrictRange()?.left()).to.equal(0);
+	});
+
 	it('uses valid slot widths in the guide and API examples for zero-volume bars', () => {
 		const guide = readFileSync(new URL('../../website/docs/slot-widths.md', import.meta.url), 'utf8');
 		const api = readFileSync(new URL('../../src/api/itime-scale-api.ts', import.meta.url), 'utf8');

@@ -41,6 +41,7 @@ export interface TimeScaleApplyRangeInvalidation {
 
 export interface TimeScaleFitContentInvalidation {
 	type: TimeScaleInvalidationType.FitContent;
+	slotFitRequested: boolean;
 }
 
 export interface TimeScaleApplyRightOffsetInvalidation {
@@ -122,10 +123,10 @@ export class InvalidateMask {
 		};
 	}
 
-	public setFitContent(): void {
+	public setFitContent(slotFitRequested: boolean): void {
 		this.stopTimeScaleAnimation();
 		// modifies both bar spacing and right offset
-		this._timeScaleInvalidations = [{ type: TimeScaleInvalidationType.FitContent }];
+		this._timeScaleInvalidations = [{ type: TimeScaleInvalidationType.FitContent, slotFitRequested }];
 	}
 
 	public applyRange(range: TimeScaleRange): void {
@@ -186,7 +187,7 @@ export class InvalidateMask {
 	private _applyTimeScaleInvalidation(invalidation: TimeScaleInvalidation): void {
 		switch (invalidation.type) {
 			case TimeScaleInvalidationType.FitContent:
-				this.setFitContent();
+				this.setFitContent(invalidation.slotFitRequested);
 				break;
 			case TimeScaleInvalidationType.ApplyRange:
 				this.applyRange(invalidation.value);

@@ -1052,7 +1052,7 @@ export class ChartModel<HorzScaleItem> implements IDestroyable, IChartModelBase 
 
 	public fitContent(): void {
 		const mask = InvalidateMask.light();
-		mask.setFitContent();
+		mask.setFitContent(this._timeScale.slotLayout() !== null);
 		this._invalidate(mask);
 	}
 

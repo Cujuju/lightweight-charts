@@ -65,6 +65,12 @@ setInterval(() => {
 			volume: live.volume + Math.round(Math.random() * 300),
 		};
 	}
+	const lastIndex = allCandles.length - 1;
+	if (allCandles[lastIndex].time === live.time) {
+		allCandles[lastIndex] = live;
+	} else {
+		allCandles.push(live);
+	}
 	candles.update(live);
 	volumeSeries.update(volumeBar(live));
 }, liveTickMs);

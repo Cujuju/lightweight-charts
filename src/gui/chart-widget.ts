@@ -680,7 +680,7 @@ export class ChartWidget<HorzScaleItem> implements IDestroyable, IChartWidgetBas
 		const timeScale = this._model.timeScale();
 		switch (invalidation.type) {
 			case TimeScaleInvalidationType.FitContent:
-				timeScale.fitContent();
+				timeScale.fitContent(invalidation.slotFitRequested);
 				break;
 			case TimeScaleInvalidationType.ApplyRange:
 				timeScale.setLogicalRange(invalidation.value);

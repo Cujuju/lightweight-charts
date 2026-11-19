@@ -1048,8 +1048,8 @@ export class TimeScale<HorzScaleItem> implements ITimeScale {
 		return this._baseIndexOrNull || 0 as TimePointIndex;
 	}
 
-	public fitContent(): void {
-		const fit = this._slots === null ? 'fit' : 'slot-fit';
+	public fitContent(slotFitRequested: boolean = false): void {
+		const fit = slotFitRequested || this._slots !== null ? 'slot-fit' : 'fit';
 		if (!this._recordRange(fit) && this._fitContent(fit)) {
 			this._correctOffset();
 			this._recalculateViewport();
@@ -1395,8 +1395,16 @@ export class TimeScale<HorzScaleItem> implements ITimeScale {
 		}
 		this._setBarSpacing(spacing ?? (this._width - (pixels || 0)) / length);
 		const bars = fit === undefined ? range.right() - this.baseIndex() : this._options.rightOffset;
-		this._applyRightOffset(this._slots === null && pixels ? pixels / this._barSpacing : bars, pixels);
+		const offset = fit === 'slot-fit' ? this._capFitBarOffset(range.left(), bars) : bars;
+		this._applyRightOffset(this._slots === null && pixels ? pixels / this._barSpacing : offset, pixels);
 		return true;
+	}
+
+	private _capFitBarOffset(first: TimePointIndex, bars: number): number {
+		const availableBars = this._slots === null
+			? this._width / this._barSpacing - (this.baseIndex() - first + 1)
+			: this._rightOffsetPlacing(this._slots, first - 0.5, -1 as Coordinate);
+		return Math.min(bars, Math.max(0, availableBars));
 	}
 
 	private _recalculateViewport(): void {
