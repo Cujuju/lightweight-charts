@@ -1181,6 +1181,30 @@ describe('TimeScale slot widths', () => {
 		expect(marginAtBase(ts)).to.be.closeTo(20, precision);
 	});
 
+	it('recovers on the first sizing after a fit, an append and a width edit on an unsized chart', () => {
+		const edits: ((model: ChartModel<Time>) => void)[] = [
+			(model: ChartModel<Time>) => model.updateTimeScale(100 as TimePointIndex, points(range(101)), 100),
+			(model: ChartModel<Time>) => model.timeScale().updateSlotWidths([{ time: internalTime(50), width: 3 }]),
+			(model: ChartModel<Time>) => model.updateTimeScale(null, [], 0),
+		];
+		for (const pixels of [-50, 50]) {
+			edits.forEach((edit: (model: ChartModel<Time>) => void, i: number) => {
+				const options = chartOptionsDefaults<Time>();
+				options.timeScale = { ...options.timeScale, rightOffsetPixels: pixels };
+				const model = new ChartModel<Time>(() => {}, options, behavior);
+				const ts = model.timeScale();
+				model.updateTimeScale(99 as TimePointIndex, points(range(100)), 0);
+				ts.setSlotWidths([{ time: internalTime(99), width: 5 }]);
+				ts.fitContent();
+				edit(model);
+				model.updateTimeScale(100 as TimePointIndex, points(range(101)), 0);
+				ts.setWidth(paneWidth);
+				expect(Number.isFinite(ts.rightOffset()), `${pixels} px, edit ${i}`).to.be.equal(true);
+				expect(ts.visibleStrictRange(), `${pixels} px, edit ${i}`).not.to.be.equal(null);
+			});
+		}
+	});
+
 	it('keeps a logical range set on an empty chart over the right offset option', () => {
 		const model = chartModel({ rightOffset: -3 });
 		const ts = model.timeScale();

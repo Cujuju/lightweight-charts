@@ -881,7 +881,7 @@ export class TimeScale<HorzScaleItem> implements ITimeScale {
 		// With the gap past the last bar in view, the edge stays where it is: shift by the slots of the `delta` new last bars.
 		// One clamp follows, because the offset limits depend on the widths of the new last bars.
 		const slotShift = barOffsetBefore < 0
-			? this._rightOffset - this._slotOffsetForBars(barOffsetBefore - delta)
+			? this._slotShiftToBars(barOffsetBefore - delta)
 			: slots.start(baseIndex + 1) - slots.start(baseIndex + 1 - delta);
 		this._compensateRightOffset(slotShift);
 		this._doFixLeftEdge();
@@ -1263,17 +1263,24 @@ export class TimeScale<HorzScaleItem> implements ITimeScale {
 	/** Converts a right offset in bars to default-width slots. */
 	private _slotOffsetForBars(bars: number): number {
 		const slots = this._slots;
-		if (slots === null) {
+		// An offset is not finite between a fit at width 0 and the first sizing, which clamps it; it has no slot to map to.
+		if (slots === null || !Number.isFinite(bars)) {
 			return bars;
 		}
 		const baseIndex = this.baseIndex();
 		return slots.logicalToSlot(baseIndex + bars + 0.5) - slots.start(baseIndex + 1);
 	}
 
+	/** How many slots lower the right offset must go to sit `bars` bars from the base; 0 while the offset is not finite. */
+	private _slotShiftToBars(bars: number): number {
+		const slotShift = this._rightOffset - this._slotOffsetForBars(bars);
+		return Number.isFinite(slotShift) ? slotShift : 0;
+	}
+
 	/** Converts a right offset in default-width slots to bars. */
 	private _barsForSlotOffset(slotOffset: number): number {
 		const slots = this._slots;
-		if (slots === null) {
+		if (slots === null || !Number.isFinite(slotOffset)) {
 			return slotOffset;
 		}
 		const baseIndex = this.baseIndex();
@@ -1365,7 +1372,7 @@ export class TimeScale<HorzScaleItem> implements ITimeScale {
 		this._syncSlotLayout(firstChangedIndex);
 		this._visibleRangeInvalidated = true;
 		this._resetTimeMarksCache();
-		const slotShift = barsToKeep === null ? 0 : this._rightOffset - this._slotOffsetForBars(barsToKeep);
+		const slotShift = barsToKeep === null ? 0 : this._slotShiftToBars(barsToKeep);
 		if (this._width === 0) {
 			// no viewport to keep yet; the first setWidth() validates spacing and offset
 			this._rightOffset -= slotShift;
