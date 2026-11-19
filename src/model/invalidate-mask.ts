@@ -32,15 +32,11 @@ export const enum TimeScaleInvalidationType {
 	StopAnimation,
 }
 
-export interface TimeRangeRequest {
-	range: IRange<InternalHorzScaleItem>;
-	requestedWhileUnsized: boolean;
-}
+export type TimeScaleRange = (LogicalRange & { time?: undefined }) | { time: IRange<InternalHorzScaleItem>; logical?: LogicalRange };
 
 export interface TimeScaleApplyRangeInvalidation {
 	type: TimeScaleInvalidationType.ApplyRange;
-	value: LogicalRange;
-	timeRange?: TimeRangeRequest;
+	value: TimeScaleRange;
 }
 
 export interface TimeScaleFitContentInvalidation {
@@ -66,6 +62,7 @@ export interface TimeScaleResetInvalidation {
 export interface ITimeScaleAnimation {
 	getPosition(time: number): number;
 	finished(time: number): boolean;
+	readonly destination?: { bars: number; pixels?: number };
 	/**
 	 * Shifts the positions this animation produces by `delta` bars to the left,
 	 * so a right offset shift during the animation is not undone on the next frame.
@@ -128,10 +125,10 @@ export class InvalidateMask {
 		this._timeScaleInvalidations = [{ type: TimeScaleInvalidationType.FitContent }];
 	}
 
-	public applyRange(range: LogicalRange, timeRange?: TimeRangeRequest): void {
+	public applyRange(range: TimeScaleRange): void {
 		this.stopTimeScaleAnimation();
 		// modifies both bar spacing and right offset
-		this._timeScaleInvalidations = [{ type: TimeScaleInvalidationType.ApplyRange, value: range, timeRange }];
+		this._timeScaleInvalidations = [{ type: TimeScaleInvalidationType.ApplyRange, value: range }];
 	}
 
 	public setTimeScaleAnimation(animation: ITimeScaleAnimation): void {
@@ -189,7 +186,7 @@ export class InvalidateMask {
 				this.setFitContent();
 				break;
 			case TimeScaleInvalidationType.ApplyRange:
-				this.applyRange(invalidation.value, invalidation.timeRange);
+				this.applyRange(invalidation.value);
 				break;
 			case TimeScaleInvalidationType.ApplyBarSpacing:
 				this.setBarSpacing(invalidation.value, invalidation.revalidate);

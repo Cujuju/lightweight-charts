@@ -89,12 +89,7 @@ export class TimeScaleApi<HorzScaleItem> implements ITimeScaleApi<HorzScaleItem>
 			from: this._horzScaleBehavior.convertHorzItemToInternal(range.from),
 			to: this._horzScaleBehavior.convertHorzItemToInternal(range.to),
 		};
-		const logicalRange = this._timeScale.logicalRangeForTimeRange(convertedRange);
-
-		this._model.setTargetLogicalRange(logicalRange, {
-			range: convertedRange,
-			requestedWhileUnsized: this._timeScale.width() === 0,
-		});
+		this._model.setTargetLogicalRange(this._timeScale.timeRangeRequest(convertedRange));
 	}
 
 	public getVisibleLogicalRange(): LogicalRange | null {

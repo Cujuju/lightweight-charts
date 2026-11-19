@@ -243,7 +243,7 @@ describe('TimeScale slot widths', () => {
 		setWidths(0.5);
 		const end = performance.now() + 5000;
 		expect(animations[0].finished(end)).to.be.equal(true);
-		ts.setSlotRightOffset(animations[0].getPosition(end));
+		ts.applyAnimation(animations[0], end);
 		expect(ts.rightOffset()).to.be.closeTo(-20, precision);
 	});
 
@@ -257,7 +257,7 @@ describe('TimeScale slot widths', () => {
 		const firstFrame = performance.now();
 		ts.scrollToOffsetAnimated(-20);
 		ts.setSlotWidths(range(barCount).map((t: number) => ({ time: internalTime(t), width: 0.5 })));
-		ts.setSlotRightOffset(animations[0].getPosition(firstFrame));
+		ts.applyAnimation(animations[0], firstFrame);
 		expect(ts.rightOffset()).to.be.closeTo(-40, precision);
 	});
 
@@ -279,7 +279,7 @@ describe('TimeScale slot widths', () => {
 
 		for (const fraction of [0.25, 0.5, 0.75, 1]) {
 			setWidths(fraction === 0.5 ? 2 : 0.5);
-			ts.setSlotRightOffset(animations[0].getPosition(start + fraction * duration));
+			ts.applyAnimation(animations[0], start + fraction * duration);
 			expect(ts.rightOffset()).to.be.closeTo(source + (target - source) * fraction, precision);
 		}
 	});
@@ -565,6 +565,24 @@ describe('TimeScale slot widths', () => {
 		expect(api.getVisibleRange()).to.deep.equal(requested);
 	});
 
+	it('queues a time range before either data or pane width is available', () => {
+		const timestamps = range(100);
+		const model = modelMock();
+		const ts = new TimeScale<Time>(model, { ...timeScaleOptionsDefaults }, localization, behavior);
+		model.timeScale = () => ts;
+		model.setTargetLogicalRange = ts.setLogicalRange.bind(ts);
+		const axis = { sizeChanged: () => new Delegate<number, number>() } as unknown as TimeAxisWidget<Time>;
+		const api = new TimeScaleApi(model, axis, behavior);
+		ts.setSlotWidths(slotWidths(timestamps));
+		const requested = { from: 21 as UTCTimestamp, to: 40 as UTCTimestamp };
+
+		api.setVisibleRange(requested);
+		ts.update(points(timestamps), 0);
+		ts.setBaseIndex(timestamps.length - 1 as TimePointIndex);
+		ts.setWidth(paneWidth);
+		expect(api.getVisibleRange()).to.deep.equal(requested);
+	});
+
 	it('revalidates spacing constraints without replacing a pending fit', () => {
 		const timestamps = range(barCount);
 		const model = modelMock();
@@ -592,6 +610,67 @@ describe('TimeScale slot widths', () => {
 		expect(ts.visibleLogicalRange()?.right()).to.be.closeTo(timestamps.length - 1, precision);
 	});
 
+	it('fits the revealed pane when slots are first registered while hidden', () => {
+		const timestamps = range(100);
+		const ts = createTimeScale({}, timestamps);
+		ts.setWidth(0);
+		ts.setSlotWidths(timestamps.map((time: number) => ({ time: internalTime(time), width: 2 })));
+		ts.fitContent();
+
+		ts.setWidth(paneWidth / 2);
+		expect(ts.visibleLogicalRange()?.left()).to.be.closeTo(0, precision);
+		expect(ts.visibleLogicalRange()?.right()).to.be.closeTo(timestamps.length - 1, precision);
+	});
+
+	it('keeps both logical edges on a locked resize through a hidden pane', () => {
+		const model = modelMock();
+		model.setRightOffset = () => {};
+		const ts = createTimeScale({ lockVisibleTimeRangeOnResize: true, rightOffsetPixels: 24 }, range(barCount), model);
+		ts.setSlotWidths(range(barCount).map((time: number) => ({ time: internalTime(time), width: 2 })));
+		ts.restoreDefault();
+		const before = ts.visibleLogicalRange();
+
+		ts.setWidth(0);
+		expect(ts.visibleLogicalRange()).to.equal(null);
+		ts.setWidth(paneWidth / 2);
+		expect(ts.visibleLogicalRange()?.left()).to.be.closeTo(before?.left() ?? NaN, precision);
+		expect(ts.visibleLogicalRange()?.right()).to.be.closeTo(before?.right() ?? NaN, precision);
+	});
+
+	it('compensates for unfollowed bars appended while hidden', () => {
+		const options = chartOptionsDefaults<Time>();
+		options.timeScale = { ...options.timeScale, shiftVisibleRangeOnNewBar: false };
+		const model = new ChartModel<Time>(() => {}, options, behavior);
+		const ts = model.timeScale();
+		const appended = 10;
+		const timestamps = range(barCount + appended);
+		ts.setWidth(paneWidth);
+		ts.setSlotWidths(slotWidths(timestamps));
+		const base = barCount - appended - 1 as TimePointIndex;
+		model.updateTimeScale(base, points(timestamps.slice(0, base + 1)), 0);
+		const before = ts.visibleLogicalRange();
+
+		ts.setWidth(0);
+		model.updateTimeScale(base + appended as TimePointIndex, points(timestamps.slice(0, base + appended + 1)), base + 1);
+		ts.setWidth(paneWidth);
+		expect(ts.visibleLogicalRange()?.left()).to.be.closeTo(before?.left() ?? NaN, precision);
+		expect(ts.visibleLogicalRange()?.right()).to.be.closeTo(before?.right() ?? NaN, precision);
+	});
+
+	it('preserves a pixel margin when slots are cleared while hidden', () => {
+		const model = modelMock();
+		model.setRightOffset = () => {};
+		const margin = 24;
+		const ts = createTimeScale({ rightOffsetPixels: margin }, range(barCount), model);
+		ts.setSlotWidths(slotWidths(range(barCount)));
+		ts.restoreDefault();
+
+		ts.setWidth(0);
+		ts.setSlotWidths([]);
+		ts.setWidth(paneWidth);
+		expect(marginAtBase(ts)).to.be.closeTo(margin, precision);
+	});
+
 	it('constrains spacing against the new base after prepending slots', () => {
 		const timestamps = range(20, 10);
 		const options = chartOptionsDefaults<Time>();
@@ -614,6 +693,35 @@ describe('TimeScale slot widths', () => {
 		expect(ts.visibleLogicalRange()?.left()).to.be.closeTo(history.length, precision);
 	});
 
+	it('publishes one visible range for a combined prepend and base update', () => {
+		const timestamps = range(20, 10);
+		const history = range(10);
+		const options = chartOptionsDefaults<Time>();
+		options.timeScale = { ...options.timeScale, fixLeftEdge: true, fixRightEdge: true };
+		const model = new ChartModel<Time>(() => {}, options, behavior);
+		const ts = model.timeScale();
+		ts.setWidth(paneWidth);
+		ts.setSlotWidths([
+			...timestamps.map((time: number) => ({ time: internalTime(time), width: 4 })),
+			...history.map((time: number) => ({ time: internalTime(time), width: minSlotWidth })),
+		]);
+		model.updateTimeScale(timestamps.length - 1 as TimePointIndex, points(timestamps), 0);
+		ts.fitContent();
+		ts.visibleLogicalRange();
+		const changes: number[][] = [];
+		ts.logicalRangeChanged().subscribe(() => {
+			const visible = ts.visibleLogicalRange();
+			if (visible !== null) {
+				changes.push([visible.left(), visible.right()]);
+			}
+		});
+		const prepended = [...history, ...timestamps];
+
+		model.updateTimeScale(prepended.length - 1 as TimePointIndex, points(prepended), 0);
+		ts.visibleLogicalRange();
+		expect(changes).to.deep.equal([[history.length, prepended.length - 1]]);
+	});
+
 	it('animates scrollToRealTime to the configured pixel margin', () => {
 		const model = modelMock();
 		model.setRightOffset = () => {};
@@ -624,8 +732,46 @@ describe('TimeScale slot widths', () => {
 		model.setTimeScaleAnimation = (animation: ITimeScaleAnimation) => { animations.push(animation); };
 
 		ts.scrollToRealTime();
-		ts.setSlotRightOffset(animations[0].getPosition(Infinity));
+		ts.applyAnimation(animations[0], Infinity);
 		expect(marginAtBase(ts)).to.be.closeTo(24, precision);
+	});
+
+	it('resolves a real-time animation finished while hidden in pixels', () => {
+		const model = modelMock();
+		model.setRightOffset = () => {};
+		const margin = 24;
+		const ts = createTimeScale({ rightOffsetPixels: margin }, range(barCount + 1), model);
+		ts.setBaseIndex(barCount - 1 as TimePointIndex);
+		ts.setSlotWidths([{ time: internalTime(barCount), width: 4 }]);
+		ts.setRightOffset(-20);
+		const animations: ITimeScaleAnimation[] = [];
+		model.setTimeScaleAnimation = (animation: ITimeScaleAnimation) => { animations.push(animation); };
+
+		ts.scrollToRealTime();
+		ts.setWidth(0);
+		ts.applyAnimation(animations[0], Infinity);
+		ts.updateSlotWidths([{ time: internalTime(barCount), width: 2 }]);
+		ts.setWidth(paneWidth);
+		expect(marginAtBase(ts)).to.be.closeTo(margin, precision);
+	});
+
+	it('resolves a zero-pixel real-time destination before the first pane width', () => {
+		const model = modelMock();
+		model.setRightOffset = () => {};
+		const ts = new TimeScale<Time>(model, { ...timeScaleOptionsDefaults, rightOffsetPixels: 0 }, localization, behavior);
+		model.setBarSpacing = ts.setBarSpacing.bind(ts);
+		const timestamps = range(barCount);
+		ts.update(points(timestamps), 0);
+		ts.setBaseIndex(timestamps.length - 1 as TimePointIndex);
+		ts.applyOptions({ barSpacing: 10 });
+		ts.setSlotWidths(slotWidths(timestamps));
+		const animations: ITimeScaleAnimation[] = [];
+		model.setTimeScaleAnimation = (animation: ITimeScaleAnimation) => { animations.push(animation); };
+
+		ts.scrollToRealTime();
+		ts.applyAnimation(animations[0], Infinity);
+		ts.setWidth(paneWidth);
+		expect(marginAtBase(ts)).to.be.closeTo(0, precision);
 	});
 
 	it('keeps both logical edges on locked resize with a pixel margin', () => {
