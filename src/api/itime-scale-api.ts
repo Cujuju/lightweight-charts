@@ -162,7 +162,7 @@ export interface ITimeScaleApi<HorzScaleItem> {
 	 * Candlestick, bar and histogram series size each bar to its slot.
 	 *
 	 * @param widths - Relative widths, matched to time points by time.
-	 * @throws RangeError if a width is not a finite number above `0`. No widths are changed in that case.
+	 * @throws RangeError if a width is not a finite number above `0` or a time is invalid. No widths are changed in that case.
 	 *
 	 * @example
 	 * ```js
@@ -180,9 +180,10 @@ export interface ITimeScaleApi<HorzScaleItem> {
 	 * Sets the relative slot widths of the given times and keeps every other stored width.
 	 * Use it for a still-forming bar or for history loaded at the left edge.
 	 * A width of `1` restores the default for that time.
+	 * Widths are kept until replaced, also for times no longer on the time scale; {@link setSlotWidths} discards them.
 	 *
 	 * @param widths - Relative widths, matched to time points by time.
-	 * @throws RangeError if a width is not a finite number above `0`. No widths are changed in that case.
+	 * @throws RangeError if a width is not a finite number above `0` or a time is invalid. No widths are changed in that case.
 	 */
 	updateSlotWidths(widths: readonly SlotWidth<HorzScaleItem>[]): void;
 

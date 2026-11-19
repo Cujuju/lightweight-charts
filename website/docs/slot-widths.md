@@ -41,13 +41,18 @@ To load history at the left edge, call `updateSlotWidths` with the widths of the
   `setSlotWidths([])` returns to uniform spacing.
 - **Missing widths.** Time points without a width, whitespace points included, use the default width `1`.
   So does the empty space before the first and after the last time point, including the right offset.
-- **Limits.** A width must be a finite number above `0`; otherwise the call throws a `RangeError` and changes nothing.
-  Valid widths are clamped to the range `[0.1, 20]`.
+- **Limits.** A width must be a finite number above `0` and its time must be valid; otherwise the call throws a
+  `RangeError` and changes nothing. Valid widths are clamped to the range `[0.1, 20]`.
+- **Stored widths.** A width is kept until you replace it, also for times that are not on the time scale.
+  `setSlotWidths` discards every earlier width, so use it to drop widths of data you no longer show.
 - **One width per time point.** Widths belong to the time scale, so they apply to every series and every pane.
 - **Zooming** changes `barSpacing`, the width of a default slot, and scales all slots together.
 - **Units.** Logical indices and ranges still count time points, so `setVisibleLogicalRange({ from: 10, to: 20 })`
   shows the 11 slots from index 10 to 20, whatever their widths. `scrollPosition()` and `rightOffset` are measured in bars.
 - **Scrolling, kinetic scrolling, zooming, fit-content, tick marks, the crosshair and hit testing** all use the slot positions.
+- **Changing a width** keeps the view steady. While the right edge of the last bar is in view, its distance to the
+  right edge of the chart is kept, so a growing live bar pushes history to the left. When you have scrolled back,
+  the bars at the right edge of the chart stay where they are.
 
 ## Series
 
@@ -69,3 +74,4 @@ const width = chart.timeScale().slotWidth(logical);
 ```
 
 Custom series receive each bar's slot width as [`CustomBarItemData.slotWidth`](/api/interfaces/CustomBarItemData.md#slotwidth).
+The chart always sets it; it is optional in the type only so that objects you build yourself stay valid.
