@@ -506,6 +506,58 @@ describe('TimeScale slot widths', () => {
 		expect(ts.visibleLogicalRange()?.right()).to.be.closeTo(to, precision);
 	});
 
+	it('replays a fit before slot registration in the same order as on a sized pane', () => {
+		const timestamps = range(100);
+		const lastBar = 19 as TimePointIndex;
+		const run = (deferred: boolean): TimeScale<Time> => {
+			const ts = new TimeScale<Time>(modelMock(), { ...timeScaleOptionsDefaults, fixRightEdge: true }, localization, behavior);
+			ts.update(points(timestamps), 0);
+			ts.setBaseIndex(lastBar);
+			if (!deferred) {
+				ts.setWidth(paneWidth);
+			}
+			ts.fitContent();
+			ts.setSlotWidths(timestamps.map((time: number) => ({ time: internalTime(time), width: 4 })));
+			if (deferred) {
+				ts.setWidth(paneWidth);
+			}
+			return ts;
+		};
+
+		const deferred = run(true);
+		const sized = run(false);
+		expect(deferred.barSpacing()).to.equal(sized.barSpacing());
+		expect(deferred.visibleLogicalRange()).to.deep.equal(sized.visibleLogicalRange());
+	});
+
+	it('replays a fit with the pixel margin in effect when it was requested', () => {
+		const initialMargin = 12;
+		const laterMargin = 60;
+		const run = (deferred: boolean): TimeScale<Time> => {
+			const model = modelMock();
+			model.setRightOffset = () => {};
+			const ts = new TimeScale<Time>(model, { ...timeScaleOptionsDefaults, rightOffsetPixels: initialMargin }, localization, behavior);
+			model.setRightOffset = ts.setRightOffset.bind(ts);
+			ts.update(points(range(barCount)), 0);
+			ts.setBaseIndex(barCount - 1 as TimePointIndex);
+			ts.setSlotWidths([{ time: internalTime(0), width: 4 }]);
+			if (!deferred) {
+				ts.setWidth(paneWidth);
+			}
+			ts.fitContent();
+			ts.applyOptions({ rightOffsetPixels: laterMargin });
+			if (deferred) {
+				ts.setWidth(paneWidth);
+			}
+			return ts;
+		};
+
+		const deferred = run(true);
+		const sized = run(false);
+		expect(deferred.barSpacing()).to.equal(sized.barSpacing());
+		expect(deferred.visibleLogicalRange()).to.deep.equal(sized.visibleLogicalRange());
+	});
+
 	it('keeps a pixel margin requested before slot widths are registered and the pane is sized', () => {
 		const margin = 12;
 		const model = modelMock();
