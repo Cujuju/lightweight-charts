@@ -1,4 +1,5 @@
-import { LogicalRange } from '../model/time-data';
+import { InternalHorzScaleItem } from './ihorz-scale-behavior';
+import { IRange, LogicalRange } from './time-data';
 
 export const enum InvalidationLevel {
 	None = 0,
@@ -31,9 +32,15 @@ export const enum TimeScaleInvalidationType {
 	StopAnimation,
 }
 
+export interface TimeRangeRequest {
+	range: IRange<InternalHorzScaleItem>;
+	requestedWhileUnsized: boolean;
+}
+
 export interface TimeScaleApplyRangeInvalidation {
 	type: TimeScaleInvalidationType.ApplyRange;
 	value: LogicalRange;
+	timeRange?: TimeRangeRequest;
 }
 
 export interface TimeScaleFitContentInvalidation {
@@ -49,6 +56,7 @@ export interface TimeScaleApplyRightOffsetInvalidation {
 export interface TimeScaleApplyBarSpacingInvalidation {
 	type: TimeScaleInvalidationType.ApplyBarSpacing;
 	value: number;
+	revalidate?: boolean;
 }
 
 export interface TimeScaleResetInvalidation {
@@ -120,10 +128,10 @@ export class InvalidateMask {
 		this._timeScaleInvalidations = [{ type: TimeScaleInvalidationType.FitContent }];
 	}
 
-	public applyRange(range: LogicalRange): void {
+	public applyRange(range: LogicalRange, timeRange?: TimeRangeRequest): void {
 		this.stopTimeScaleAnimation();
 		// modifies both bar spacing and right offset
-		this._timeScaleInvalidations = [{ type: TimeScaleInvalidationType.ApplyRange, value: range }];
+		this._timeScaleInvalidations = [{ type: TimeScaleInvalidationType.ApplyRange, value: range, timeRange }];
 	}
 
 	public setTimeScaleAnimation(animation: ITimeScaleAnimation): void {
@@ -142,9 +150,9 @@ export class InvalidateMask {
 		this._timeScaleInvalidations = [{ type: TimeScaleInvalidationType.Reset }];
 	}
 
-	public setBarSpacing(barSpacing: number): void {
+	public setBarSpacing(barSpacing: number, revalidate?: boolean): void {
 		this.stopTimeScaleAnimation();
-		this._timeScaleInvalidations.push({ type: TimeScaleInvalidationType.ApplyBarSpacing, value: barSpacing });
+		this._timeScaleInvalidations.push({ type: TimeScaleInvalidationType.ApplyBarSpacing, value: barSpacing, revalidate });
 	}
 
 	public setRightOffset(offset: number | undefined, offsetPixels?: number): void {
@@ -181,10 +189,10 @@ export class InvalidateMask {
 				this.setFitContent();
 				break;
 			case TimeScaleInvalidationType.ApplyRange:
-				this.applyRange(invalidation.value);
+				this.applyRange(invalidation.value, invalidation.timeRange);
 				break;
 			case TimeScaleInvalidationType.ApplyBarSpacing:
-				this.setBarSpacing(invalidation.value);
+				this.setBarSpacing(invalidation.value, invalidation.revalidate);
 				break;
 			case TimeScaleInvalidationType.ApplyRightOffset:
 				this.setRightOffset(invalidation.value, invalidation.offsetPixels);

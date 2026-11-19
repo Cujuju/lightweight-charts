@@ -91,7 +91,10 @@ export class TimeScaleApi<HorzScaleItem> implements ITimeScaleApi<HorzScaleItem>
 		};
 		const logicalRange = this._timeScale.logicalRangeForTimeRange(convertedRange);
 
-		this._model.setTargetLogicalRange(logicalRange);
+		this._model.setTargetLogicalRange(logicalRange, {
+			range: convertedRange,
+			requestedWhileUnsized: this._timeScale.width() === 0,
+		});
 	}
 
 	public getVisibleLogicalRange(): LogicalRange | null {

@@ -683,10 +683,10 @@ export class ChartWidget<HorzScaleItem> implements IDestroyable, IChartWidgetBas
 				timeScale.fitContent();
 				break;
 			case TimeScaleInvalidationType.ApplyRange:
-				timeScale.setLogicalRange(invalidation.value);
+				timeScale.setLogicalRange(invalidation.value, invalidation.timeRange);
 				break;
 			case TimeScaleInvalidationType.ApplyBarSpacing:
-				timeScale.setBarSpacing(invalidation.value);
+				timeScale.setBarSpacing(invalidation.value, invalidation.revalidate);
 				break;
 			case TimeScaleInvalidationType.ApplyRightOffset:
 				timeScale.setRightOffset(invalidation.value, invalidation.offsetPixels);

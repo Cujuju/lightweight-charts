@@ -32,7 +32,6 @@ function makeBars(count: number, times?: number[]): TestBar[] {
 		const time = times ? times[i] : i;
 		return {
 			x: i * 10,
-			slotWidth: 10,
 			time,
 			barColor: '#000000',
 			originalData: {

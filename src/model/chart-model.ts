@@ -16,7 +16,7 @@ import { DefaultPriceScaleId, isDefaultPriceScale } from './default-price-scale'
 import { GridOptions } from './grid';
 import { IPrimitiveHitTestSource } from './idata-source';
 import { IHorzScaleBehavior, InternalHorzScaleItem } from './ihorz-scale-behavior';
-import { InvalidateMask, InvalidationLevel, ITimeScaleAnimation } from './invalidate-mask';
+import { InvalidateMask, InvalidationLevel, ITimeScaleAnimation, TimeRangeRequest } from './invalidate-mask';
 import { IPriceDataSource } from './iprice-data-source';
 import { ISeries } from './iseries';
 import { ColorType, LayoutOptions } from './layout-options';
@@ -1075,9 +1075,9 @@ export class ChartModel<HorzScaleItem> implements IDestroyable, IChartModelBase 
 		this._invalidate(mask);
 	}
 
-	public setTargetLogicalRange(range: LogicalRange): void {
+	public setTargetLogicalRange(range: LogicalRange, timeRange?: TimeRangeRequest): void {
 		const mask = InvalidateMask.light();
-		mask.applyRange(range);
+		mask.applyRange(range, timeRange);
 		this._invalidate(mask);
 	}
 
@@ -1087,9 +1087,9 @@ export class ChartModel<HorzScaleItem> implements IDestroyable, IChartModelBase 
 		this._invalidate(mask);
 	}
 
-	public setBarSpacing(spacing: number): void {
+	public setBarSpacing(spacing: number, revalidate?: boolean): void {
 		const mask = InvalidateMask.light();
-		mask.setBarSpacing(spacing);
+		mask.setBarSpacing(spacing, revalidate);
 		this._invalidate(mask);
 	}
 
