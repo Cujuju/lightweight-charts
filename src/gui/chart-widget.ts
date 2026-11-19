@@ -689,14 +689,18 @@ export class ChartWidget<HorzScaleItem> implements IDestroyable, IChartWidgetBas
 				timeScale.setBarSpacing(invalidation.value);
 				break;
 			case TimeScaleInvalidationType.ApplyRightOffset:
-				timeScale.setRightOffset(invalidation.value);
+				if (invalidation.slotUnits) {
+					timeScale.setSlotRightOffset(invalidation.value);
+				} else {
+					timeScale.setRightOffset(invalidation.value);
+				}
 				break;
 			case TimeScaleInvalidationType.Reset:
 				timeScale.restoreDefault();
 				break;
 			case TimeScaleInvalidationType.Animation:
 				// apply the frame even if the animation has just finished, otherwise the view stops short of the target
-				timeScale.setRightOffset(invalidation.value.getPosition(time));
+				timeScale.setAnimatedRightOffset(invalidation.value.getPosition(time));
 				break;
 		}
 	}

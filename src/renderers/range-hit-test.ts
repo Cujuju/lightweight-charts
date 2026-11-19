@@ -1,5 +1,6 @@
 import { Coordinate } from '../model/coordinate';
 import { HitTestPriority, InternalHitTestCandidate } from '../model/internal-hit-test';
+import { SlotLayout } from '../model/slot-layout';
 import { SeriesItemsIndexesRange } from '../model/time-data';
 
 import { hoveredSeriesHitTestResult, lowerBoundByX, rangePair, TimedCoordinate, upperBoundByX } from './hit-test-common';
@@ -36,13 +37,14 @@ export function hitTestSeriesRange<TItem extends TimedCoordinate>(
 	y: Coordinate,
 	barSpacing: number,
 	hitTestTolerance: number,
-	rangeProvider: (item: TItem, out: [Coordinate, Coordinate]) => void
+	rangeProvider: (item: TItem, out: [Coordinate, Coordinate]) => void,
+	slots: SlotLayout | null = null
 ): InternalHitTestCandidate | null {
 	if (visibleRange === null || visibleRange.from >= visibleRange.to || items.length === 0) {
 		return null;
 	}
 
-	const horizontalRadius = barSpacing / 2 + hitTestTolerance;
+	const horizontalRadius = barSpacing * (slots === null ? 1 : slots.maxWidth()) / 2 + hitTestTolerance;
 	const candidateFrom = lowerBoundByX(items, x - horizontalRadius, visibleRange.from, visibleRange.to);
 	const candidateTo = upperBoundByX(items, x + horizontalRadius, candidateFrom, visibleRange.to);
 	if (candidateFrom >= candidateTo) {
@@ -55,8 +57,10 @@ export function hitTestSeriesRange<TItem extends TimedCoordinate>(
 		const item = items[itemIndex];
 		const previousItem = itemIndex > visibleRange.from ? items[itemIndex - 1] : undefined;
 		const nextItem = itemIndex < visibleRange.to - 1 ? items[itemIndex + 1] : undefined;
-		const leftBoundary = slotStart(item, previousItem, barSpacing) - hitTestTolerance;
-		const rightBoundary = slotEnd(item, nextItem, barSpacing) + hitTestTolerance;
+		// with slot widths each item knows its own slot, so neighbours are not needed
+		const halfSlot = slots === null ? 0 : barSpacing * slots.width(item.time) / 2;
+		const leftBoundary = (slots === null ? slotStart(item, previousItem, barSpacing) : item.x - halfSlot) - hitTestTolerance;
+		const rightBoundary = (slots === null ? slotEnd(item, nextItem, barSpacing) : item.x + halfSlot) + hitTestTolerance;
 
 		if (x < leftBoundary || x > rightBoundary) {
 			continue;

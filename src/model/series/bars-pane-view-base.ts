@@ -33,7 +33,8 @@ export abstract class BarsPaneViewBase<TSeriesType extends 'Bar' | 'Candlestick'
 			(bar: ItemType, out: [Coordinate, Coordinate]) => {
 				out[0] = bar.highY;
 				out[1] = bar.lowY;
-			}
+			},
+			this._model.timeScale().slotLayout()
 		);
 	}
 

@@ -3,6 +3,7 @@ import { BitmapCoordinatesRenderingScope } from 'fancy-canvas';
 import { fillRectInnerBorder } from '../helpers/canvas-helpers';
 
 import { CandlesticksColorerStyle } from '../model/series-bar-colorer';
+import { SlotLayout } from '../model/slot-layout';
 import { SeriesItemsIndexesRange } from '../model/time-data';
 
 import { BarCandlestickItemBase } from './bars-renderer';
@@ -16,6 +17,8 @@ export interface PaneRendererCandlesticksData {
 	bars: readonly CandlestickItem[];
 
 	barSpacing: number;
+	/** Relative slot widths, or `null` when every bar uses `barSpacing`. */
+	slots: SlotLayout | null;
 
 	wickVisible: boolean;
 	borderVisible: boolean;
@@ -45,18 +48,7 @@ export class PaneRendererCandlesticks extends BitmapCoordinatesPaneRenderer {
 		const { horizontalPixelRatio } = renderingScope;
 
 		// now we know pixelRatio and we could calculate barWidth effectively
-		this._barWidth = optimalCandlestickWidth(this._data.barSpacing, horizontalPixelRatio);
-
-		// grid and crosshair have line width = Math.floor(pixelRatio)
-		// if this value is odd, we have to make candlesticks' width odd
-		// if this value is even, we have to make candlesticks' width even
-		// in order of keeping crosshair-over-candlesticks drawing symmetric
-		if (this._barWidth >= 2) {
-			const wickWidth = Math.floor(horizontalPixelRatio);
-			if ((wickWidth % 2) !== (this._barWidth % 2)) {
-				this._barWidth--;
-			}
-		}
+		this._barWidth = candleWidth(this._data.barSpacing, horizontalPixelRatio);
 
 		const bars = this._data.bars;
 		if (this._data.wickVisible) {
@@ -67,11 +59,30 @@ export class PaneRendererCandlesticks extends BitmapCoordinatesPaneRenderer {
 			this._drawBorder(renderingScope, bars, this._data.visibleRange);
 		}
 
-		const borderWidth = this._calculateBorderWidth(horizontalPixelRatio);
-
-		if (!this._data.borderVisible || this._barWidth > borderWidth * 2) {
+		// with uniform widths the border either covers every body or none
+		const bodiesCovered = this._data.slots === null
+			&& this._data.borderVisible
+			&& this._barWidth <= this._calculateBorderWidth(horizontalPixelRatio, this._barWidth) * 2;
+		if (!bodiesCovered) {
 			this._drawCandles(renderingScope, bars, this._data.visibleRange);
 		}
+	}
+
+	private _borderWidthAt(barWidth: number, uniformBorderWidth: number, horizontalPixelRatio: number): number {
+		return (this._data as PaneRendererCandlesticksData).slots === null
+			? uniformBorderWidth
+			: this._calculateBorderWidth(horizontalPixelRatio, barWidth);
+	}
+
+	private _barSpacingAt(bar: CandlestickItem): number {
+		const data = this._data as PaneRendererCandlesticksData;
+		return data.slots === null ? data.barSpacing : data.barSpacing * data.slots.width(bar.time);
+	}
+
+	private _barWidthAt(bar: CandlestickItem, horizontalPixelRatio: number): number {
+		return (this._data as PaneRendererCandlesticksData).slots === null
+			? this._barWidth
+			: candleWidth(this._barSpacingAt(bar), horizontalPixelRatio);
 	}
 
 	private _drawWicks(renderingScope: BitmapCoordinatesRenderingScope, bars: readonly CandlestickItem[], visibleRange: SeriesItemsIndexesRange): void {
@@ -82,20 +93,17 @@ export class PaneRendererCandlesticks extends BitmapCoordinatesPaneRenderer {
 		const { context: ctx, horizontalPixelRatio, verticalPixelRatio } = renderingScope;
 
 		let prevWickColor = '';
-		let wickWidth = Math.min(
-			Math.floor(horizontalPixelRatio),
-			Math.floor(this._data.barSpacing * horizontalPixelRatio)
-		);
-		wickWidth = Math.max(
-			Math.floor(horizontalPixelRatio),
-			Math.min(wickWidth, this._barWidth)
-		);
-		const wickOffset = Math.floor(wickWidth * 0.5);
+		const uniformWickWidth = wickWidthFor(this._data.barSpacing, this._barWidth, horizontalPixelRatio);
+		const slots = this._data.slots;
 
 		let prevEdge: number | null = null;
 
 		for (let i = visibleRange.from; i < visibleRange.to; i++) {
 			const bar = bars[i];
+			const wickWidth = slots === null
+				? uniformWickWidth
+				: wickWidthFor(this._barSpacingAt(bar), this._barWidthAt(bar, horizontalPixelRatio), horizontalPixelRatio);
+			const wickOffset = Math.floor(wickWidth * 0.5);
 			if (bar.barWickColor !== prevWickColor) {
 				ctx.fillStyle = bar.barWickColor;
 				prevWickColor = bar.barWickColor;
@@ -124,13 +132,13 @@ export class PaneRendererCandlesticks extends BitmapCoordinatesPaneRenderer {
 		}
 	}
 
-	private _calculateBorderWidth(pixelRatio: number): number {
+	private _calculateBorderWidth(pixelRatio: number, barWidth: number): number {
 		let borderWidth = Math.floor(Constants.BarBorderWidth * pixelRatio);
-		if (this._barWidth <= 2 * borderWidth) {
-			borderWidth = Math.floor((this._barWidth - 1) * 0.5);
+		if (barWidth <= 2 * borderWidth) {
+			borderWidth = Math.floor((barWidth - 1) * 0.5);
 		}
 		const res = Math.max(Math.floor(pixelRatio), borderWidth);
-		if (this._barWidth <= res * 2) {
+		if (barWidth <= res * 2) {
 			// do not draw bodies, restore original value
 			return Math.max(Math.floor(pixelRatio), Math.floor(Constants.BarBorderWidth * pixelRatio));
 		}
@@ -145,20 +153,22 @@ export class PaneRendererCandlesticks extends BitmapCoordinatesPaneRenderer {
 		const { context: ctx, horizontalPixelRatio, verticalPixelRatio } = renderingScope;
 
 		let prevBorderColor: string | undefined = '';
-		const borderWidth = this._calculateBorderWidth(horizontalPixelRatio);
+		const uniformBorderWidth = this._calculateBorderWidth(horizontalPixelRatio, this._barWidth);
 
 		let prevEdge: number | null = null;
 
 		for (let i = visibleRange.from; i < visibleRange.to; i++) {
 			const bar = bars[i];
+			const barWidth = this._barWidthAt(bar, horizontalPixelRatio);
+			const borderWidth = this._borderWidthAt(barWidth, uniformBorderWidth, horizontalPixelRatio);
 			if (bar.barBorderColor !== prevBorderColor) {
 				ctx.fillStyle = bar.barBorderColor;
 				prevBorderColor = bar.barBorderColor;
 			}
 
-			let left = Math.round(bar.x * horizontalPixelRatio) - Math.floor(this._barWidth * 0.5);
+			let left = Math.round(bar.x * horizontalPixelRatio) - Math.floor(barWidth * 0.5);
 			// this is important to calculate right before patching left
-			const right = left + this._barWidth - 1;
+			const right = left + barWidth - 1;
 
 			const top = Math.round(Math.min(bar.openY, bar.closeY) * verticalPixelRatio);
 			const bottom = Math.round(Math.max(bar.openY, bar.closeY) * verticalPixelRatio);
@@ -167,7 +177,7 @@ export class PaneRendererCandlesticks extends BitmapCoordinatesPaneRenderer {
 				left = Math.max(prevEdge + 1, left);
 				left = Math.min(left, right);
 			}
-			if (this._data.barSpacing * horizontalPixelRatio > 2 * borderWidth) {
+			if (this._barSpacingAt(bar) * horizontalPixelRatio > 2 * borderWidth) {
 				fillRectInnerBorder(ctx, left, top, right - left + 1, bottom - top + 1, borderWidth);
 			} else {
 				const width = right - left + 1;
@@ -185,16 +195,22 @@ export class PaneRendererCandlesticks extends BitmapCoordinatesPaneRenderer {
 		const { context: ctx, horizontalPixelRatio, verticalPixelRatio } = renderingScope;
 
 		let prevBarColor = '';
-		const borderWidth = this._calculateBorderWidth(horizontalPixelRatio);
+		const uniformBorderWidth = this._calculateBorderWidth(horizontalPixelRatio, this._barWidth);
 
 		for (let i = visibleRange.from; i < visibleRange.to; i++) {
 			const bar = bars[i];
+			const barWidth = this._barWidthAt(bar, horizontalPixelRatio);
+			const borderWidth = this._borderWidthAt(barWidth, uniformBorderWidth, horizontalPixelRatio);
+			if (this._data.borderVisible && barWidth <= borderWidth * 2) {
+				// the border already covers the whole body
+				continue;
+			}
 
 			let top = Math.round(Math.min(bar.openY, bar.closeY) * verticalPixelRatio);
 			let bottom = Math.round(Math.max(bar.openY, bar.closeY) * verticalPixelRatio);
 
-			let left = Math.round(bar.x * horizontalPixelRatio) - Math.floor(this._barWidth * 0.5);
-			let right = left + this._barWidth - 1;
+			let left = Math.round(bar.x * horizontalPixelRatio) - Math.floor(barWidth * 0.5);
+			let right = left + barWidth - 1;
 
 			if (bar.barColor !== prevBarColor) {
 				const barColor = bar.barColor;
@@ -215,4 +231,31 @@ export class PaneRendererCandlesticks extends BitmapCoordinatesPaneRenderer {
 			ctx.fillRect(left, top, right - left + 1, bottom - top + 1);
 		}
 	}
+}
+
+/** Body width in bitmap pixels for a slot `barSpacing` CSS pixels wide. */
+function candleWidth(barSpacing: number, horizontalPixelRatio: number): number {
+	let barWidth = optimalCandlestickWidth(barSpacing, horizontalPixelRatio);
+	// grid and crosshair have line width = Math.floor(pixelRatio)
+	// if this value is odd, we have to make candlesticks' width odd
+	// if this value is even, we have to make candlesticks' width even
+	// in order of keeping crosshair-over-candlesticks drawing symmetric
+	if (barWidth >= 2) {
+		const wickWidth = Math.floor(horizontalPixelRatio);
+		if ((wickWidth % 2) !== (barWidth % 2)) {
+			barWidth--;
+		}
+	}
+	return barWidth;
+}
+
+function wickWidthFor(barSpacing: number, barWidth: number, horizontalPixelRatio: number): number {
+	const wickWidth = Math.min(
+		Math.floor(horizontalPixelRatio),
+		Math.floor(barSpacing * horizontalPixelRatio)
+	);
+	return Math.max(
+		Math.floor(horizontalPixelRatio),
+		Math.min(wickWidth, barWidth)
+	);
 }

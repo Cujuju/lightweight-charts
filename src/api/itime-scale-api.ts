@@ -17,6 +17,21 @@ export type LogicalRangeChangeEventHandler = (logicalRange: LogicalRange | null)
  */
 export type SizeChangeEventHandler = (width: number, height: number) => void;
 
+/**
+ * The relative horizontal width of one time point's slot on the time scale.
+ *
+ * See {@link ITimeScaleApi.setSlotWidths}.
+ */
+export interface SlotWidth<HorzScaleItem> {
+	/** Time of the time point. Points are matched by time, so a width stays with its point when data is prepended. */
+	time: HorzScaleItem;
+	/**
+	 * Width relative to the default slot: `1` is the default, `2` is twice as wide.
+	 * Must be a finite number above `0`; values are clamped to the range `[0.1, 20]`.
+	 */
+	width: number;
+}
+
 /** Interface to chart time scale */
 export interface ITimeScaleApi<HorzScaleItem> {
 	/**
@@ -133,6 +148,53 @@ export interface ITimeScaleApi<HorzScaleItem> {
 	 * @returns Time of a bar that is located on that coordinate or `null` if there are no bars found on that coordinate.
 	 */
 	coordinateToTime(x: number): HorzScaleItem | null;
+
+	/**
+	 * Replaces the relative slot widths of all time points.
+	 *
+	 * A slot is the horizontal space of one time point; its pixel width is `width * barSpacing`.
+	 * Time points without a width, including those added later, use the default width `1`,
+	 * and so does the space before the first and after the last time point.
+	 * Widths may be given for times that are not on the time scale yet; they apply once the point is added.
+	 * An empty array restores uniform spacing.
+	 *
+	 * Coordinates, ranges, scrolling, zooming, tick marks, the crosshair and hit tests all follow the widths.
+	 * Candlestick, bar and histogram series size each bar to its slot.
+	 *
+	 * @param widths - Relative widths, matched to time points by time.
+	 * @throws RangeError if a width is not a finite number above `0` or a time is invalid. No widths are changed in that case.
+	 *
+	 * @example
+	 * ```js
+	 * const averageVolume = bars.reduce((sum, bar) => sum + bar.volume, 0) / bars.length || 1;
+	 * const minWidth = 0.1;
+	 * chart.timeScale().setSlotWidths(bars.map(bar => ({
+	 *     time: bar.time,
+	 *     width: Math.max(minWidth, bar.volume / averageVolume),
+	 * })));
+	 * ```
+	 */
+	setSlotWidths(widths: readonly SlotWidth<HorzScaleItem>[]): void;
+
+	/**
+	 * Sets the relative slot widths of the given times and keeps every other stored width.
+	 * Use it for a still-forming bar or for history loaded at the left edge.
+	 * A width of `1` restores the default for that time.
+	 * Widths are kept until replaced, also for times no longer on the time scale; {@link setSlotWidths} discards them.
+	 *
+	 * @param widths - Relative widths, matched to time points by time.
+	 * @throws RangeError if a width is not a finite number above `0` or a time is invalid. No widths are changed in that case.
+	 */
+	updateSlotWidths(widths: readonly SlotWidth<HorzScaleItem>[]): void;
+
+	/**
+	 * Returns the width in pixels of the slot at a logical index.
+	 * Together with {@link logicalToCoordinate}, the slot center, it lets plugins align shapes to slots.
+	 *
+	 * @param logical - Logical index.
+	 * @returns Slot width in pixels, or `null` if the chart doesn't have data.
+	 */
+	slotWidth(logical: Logical): number | null;
 
 	/**
 	 * Returns a width of the time scale.

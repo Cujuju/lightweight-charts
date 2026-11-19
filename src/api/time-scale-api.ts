@@ -11,12 +11,13 @@ import { ChartModel } from '../model/chart-model';
 import { Coordinate } from '../model/coordinate';
 import { IHorzScaleBehavior, InternalHorzScaleItem } from '../model/ihorz-scale-behavior';
 import { IRange, Logical, LogicalRange, TimePointIndex } from '../model/time-data';
-import { HorzScaleOptions, TimeScale } from '../model/time-scale';
+import { HorzScaleOptions, InternalSlotWidth, TimeScale } from '../model/time-scale';
 
 import {
 	ITimeScaleApi,
 	LogicalRangeChangeEventHandler,
 	SizeChangeEventHandler,
+	SlotWidth,
 	TimeRangeChangeEventHandler,
 } from './itime-scale-api';
 const enum Constants {
@@ -161,6 +162,18 @@ export class TimeScaleApi<HorzScaleItem> implements ITimeScaleApi<HorzScaleItem>
 		return timePoint.originalTime as HorzScaleItem;
 	}
 
+	public setSlotWidths(widths: readonly SlotWidth<HorzScaleItem>[]): void {
+		this._timeScale.setSlotWidths(widths.map((entry: SlotWidth<HorzScaleItem>) => this._toInternalSlotWidth(entry)));
+	}
+
+	public updateSlotWidths(widths: readonly SlotWidth<HorzScaleItem>[]): void {
+		this._timeScale.updateSlotWidths(widths.map((entry: SlotWidth<HorzScaleItem>) => this._toInternalSlotWidth(entry)));
+	}
+
+	public slotWidth(logical: Logical): number | null {
+		return this._timeScale.isEmpty() ? null : this._timeScale.slotWidth(Math.round(logical) as TimePointIndex);
+	}
+
 	public width(): number {
 		return this._timeAxisWidget.getSize().width;
 	}
@@ -202,6 +215,14 @@ export class TimeScaleApi<HorzScaleItem> implements ITimeScaleApi<HorzScaleItem>
 			...clone(this._timeScale.options()),
 			barSpacing: this._timeScale.barSpacing(),
 		};
+	}
+
+	private _toInternalSlotWidth(entry: SlotWidth<HorzScaleItem>): InternalSlotWidth {
+		try {
+			return { time: this._horzScaleBehavior.convertHorzItemToInternal(entry.time), width: entry.width };
+		} catch (error) {
+			throw new RangeError(`slot width time is invalid: ${String(error)}`);
+		}
 	}
 
 	private _onVisibleBarsChanged(): void {

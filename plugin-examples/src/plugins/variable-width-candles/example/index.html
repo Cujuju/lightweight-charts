@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Lightweight Charts - Variable Width Candles Example</title>
+		<link href="../../../examples-base.css" rel="stylesheet" />
+	</head>
+	<body>
+		<div id="chart"></div>
+		<div id="description">
+			<h1>Variable Width Candles</h1>
+			<p>
+				Each candle's slot width is the square root of its volume relative to the
+				median volume, clamped to 0.6&ndash;3 default slots. A series primitive
+				draws a high-low box across every slot. The last bar is still forming,
+				so it widens as its volume grows, and scrolling to the left edge loads
+				older history. <br /><strong>Note:</strong> this example is randomly
+				generated, so refresh the page to see different data.
+			</p>
+		</div>
+		<script type="module" src="./example.ts"></script>
+	</body>
+</html>

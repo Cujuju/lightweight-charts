@@ -50,6 +50,12 @@ export interface CustomBarItemData<
 	 */
 	x: number;
 	/**
+	 * Width in pixels of the item's slot, centered on `x`.
+	 * The chart supplies this value in renderer data.
+	 * Equals `barSpacing` unless slot widths are set with `ITimeScaleApi.setSlotWidths`.
+	 */
+	slotWidth?: number;
+	/**
 	 * Time scale index for the item. This isn't the timestamp but rather the logical index.
 	 */
 	time: number;

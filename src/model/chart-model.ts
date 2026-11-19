@@ -976,12 +976,10 @@ export class ChartModel<HorzScaleItem> implements IDestroyable, IChartModelBase 
 			const replacedExistingWhitespace = firstChangedPointIndex === undefined;
 			const needShiftVisibleRangeOnNewBar = isLastSeriesBarVisible && (!replacedExistingWhitespace || allowShiftWhenReplacingWhitespace) && this._timeScale.options().shiftVisibleRangeOnNewBar;
 			if (isSeriesPointsAddedToRight && !needShiftVisibleRangeOnNewBar) {
-				// keep the visible range in place: apply the new base index first so that the shifted offset is clamped against it,
-				// then shift everything that holds an absolute right offset (the time scale, its scroll gesture snapshot and a running animation)
+				// keep the visible range in place: shift everything that holds an absolute right offset
+				// (the time scale, its scroll gesture snapshot and a running animation)
 				const delta = newBaseIndex - currentBaseIndex;
-				this._timeScale.setBaseIndex(newBaseIndex);
-				this._timeScale.shiftRightOffset(delta);
-				this._shiftTimeScaleAnimation(delta);
+				this.shiftTimeScaleAnimation(this._timeScale.advanceBaseIndex(newBaseIndex, delta));
 				return;
 			}
 		}
@@ -1095,9 +1093,9 @@ export class ChartModel<HorzScaleItem> implements IDestroyable, IChartModelBase 
 		this._invalidate(mask);
 	}
 
-	public setRightOffset(offset: number): void {
+	public setRightOffset(offset: number, slotUnits?: boolean): void {
 		const mask = InvalidateMask.light();
-		mask.setRightOffset(offset);
+		mask.setRightOffset(offset, slotUnits);
 		this._invalidate(mask);
 	}
 
@@ -1113,6 +1111,13 @@ export class ChartModel<HorzScaleItem> implements IDestroyable, IChartModelBase 
 		const mask = InvalidateMask.light();
 		mask.stopTimeScaleAnimation();
 		this._invalidate(mask);
+	}
+
+	/** Moves a running time scale animation by `delta` default-width slots to the left. */
+	public shiftTimeScaleAnimation(delta: number): void {
+		if (this._timeScaleAnimation !== null) {
+			this._timeScaleAnimation.shift(delta);
+		}
 	}
 
 	public defaultVisiblePriceScaleId(): string {
@@ -1289,11 +1294,5 @@ export class ChartModel<HorzScaleItem> implements IDestroyable, IChartModelBase 
 		}
 
 		return false;
-	}
-
-	private _shiftTimeScaleAnimation(delta: number): void {
-		if (this._timeScaleAnimation !== null) {
-			this._timeScaleAnimation.shift(delta);
-		}
 	}
 }
